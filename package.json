@@ -9,9 +9,6 @@
     "start": "next start",
     "lint": "eslint"
   },
-  "dependencies": {
-    "next": "^16.3.5",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
-  }
+  "dependencies": {},
+  "devDependencies": {}
 }
