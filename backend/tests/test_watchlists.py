@@ -107,3 +107,44 @@ def test_fuzzy_match_disabled_by_default(client, auth_headers):
         assert result is None
     finally:
         db.close()
+
+
+def test_threshold_calibration_tool_on_synthetic_data():
+    """docs/backend.md §12.7 -- validates the CALIBRATION TOOL's precision/recall math
+    is correct, using hand-constructed synthetic examples with a known right answer.
+    This deliberately does NOT derive or suggest a real FUZZY_WATCHLIST_MAX_DISTANCE --
+    see calibrate_threshold()'s docstring for why that needs real OCR data, not
+    synthetic examples. This test only proves the tool computes precision/recall
+    correctly, so it's trustworthy the day real data is fed into it."""
+    from intelligence.watchlist_matcher import CalibrationExample, calibrate_threshold
+
+    examples = [
+        # True positives at distance 0 (exact) and 1 (one-character OCR noise).
+        CalibrationExample(ocr_reading="GJ01AB4521", ground_truth="GJ01AB4521", is_same_plate=True),
+        CalibrationExample(ocr_reading="GJ01AB4520", ground_truth="GJ01AB4521", is_same_plate=True),
+        # A genuinely different plate that happens to be distance 1 away -- the exact
+        # false-positive risk fuzzy matching creates. At threshold>=1 this becomes a
+        # false positive, which is what should tank precision at that threshold.
+        CalibrationExample(ocr_reading="GJ01AB4529", ground_truth="GJ01AB4521", is_same_plate=False),
+        # An easy true negative, far away at every threshold tested.
+        CalibrationExample(ocr_reading="MH12ZZ9999", ground_truth="GJ01AB4521", is_same_plate=False),
+    ]
+
+    recommended, stats = calibrate_threshold(examples, max_threshold=2, min_precision=0.99)
+
+    stats_by_threshold = {s.threshold: s for s in stats}
+    # Threshold 0: only the exact match counts, no false positives possible -> perfect precision.
+    assert stats_by_threshold[0].true_positives == 1
+    assert stats_by_threshold[0].false_positives == 0
+    assert stats_by_threshold[0].precision == 1.0
+
+    # Threshold 1: both true positives now match, but so does the near-miss false
+    # positive -> precision drops below the 0.99 bar.
+    assert stats_by_threshold[1].true_positives == 2
+    assert stats_by_threshold[1].false_positives == 1
+    assert stats_by_threshold[1].precision < 0.99
+
+    # The tool must recommend 0 here (the largest threshold still meeting min_precision),
+    # not 1 or 2 -- this is the actual safety property: it should never recommend a
+    # threshold it can prove creates a false positive above the target rate.
+    assert recommended == 0

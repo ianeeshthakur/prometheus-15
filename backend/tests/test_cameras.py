@@ -171,6 +171,55 @@ def test_sync_ingest_fails_clearly_when_unconfigured(client, auth_headers):
     assert "INGEST_API_BASE_URL" in resp.json()["detail"]
 
 
+def test_ingest_preview_requires_admin(client):
+    resp = client.get("/api/cameras/ingest-preview")
+    assert resp.status_code == 401
+
+
+def test_ingest_preview_fails_clearly_when_unconfigured(client, auth_headers):
+    """docs/backend.md §12.7 -- same honesty rule as sync-ingest: no real host is
+    configured in this test env, so this must fail clearly, not silently."""
+    resp = client.get("/api/cameras/ingest-preview", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "INGEST_API_BASE_URL" in resp.json()["detail"]
+
+
+def test_ingest_field_aliases_apply_before_normalization(monkeypatch):
+    """docs/backend.md §12.7 -- confirms a real-payload rename (e.g. the catalogue
+    uses "vendor" instead of "vms_vendor") is fixable via INGEST_FIELD_ALIASES
+    (a config change) rather than needing a code change. Unit-tests the mapping
+    function directly -- no network/HTTP involved."""
+    import integration.ingest_sync as ingest_sync
+
+    monkeypatch.setattr(ingest_sync, "INGEST_FIELD_ALIASES", {"vendor": "vms_vendor", "cam_id": "camera_uid"})
+
+    raw_item = {
+        "cam_id": "CAM-ALIAS-001",
+        "name": "Alias Test Camera",
+        "district": "Ahmedabad",
+        "location": "Test Road",
+        "vendor": "AcmeCCTV",
+        "status": "active",
+        "protocol_type": "RTSP",
+    }
+    mapped = ingest_sync._map_ingest_fields(raw_item)
+    assert mapped["camera_uid"] == "CAM-ALIAS-001"
+    assert mapped["vms_vendor"] == "AcmeCCTV"
+    # Original keys stay too -- the alias only adds the target key, doesn't rename in place.
+    assert mapped["cam_id"] == "CAM-ALIAS-001"
+
+
+def test_ingest_field_aliases_do_not_override_existing_target_key(monkeypatch):
+    """An alias must not clobber a field that's already correctly named in the payload."""
+    import integration.ingest_sync as ingest_sync
+
+    monkeypatch.setattr(ingest_sync, "INGEST_FIELD_ALIASES", {"vendor": "vms_vendor"})
+
+    raw_item = {"vendor": "WrongVendor", "vms_vendor": "CorrectVendor"}
+    mapped = ingest_sync._map_ingest_fields(raw_item)
+    assert mapped["vms_vendor"] == "CorrectVendor"
+
+
 def test_operator_department_scope_enforced(client):
     """docs/frontend.md §3.7's "role-based search" requirement, closed §12.5 -- an
     OPERATOR only ever sees their own department's cameras, server-side, regardless

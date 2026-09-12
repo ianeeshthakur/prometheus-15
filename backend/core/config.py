@@ -1,5 +1,6 @@
 # Centralized environment configuration. Ported/extracted from contrib/aneesh/backend
 # (previously scattered os.environ.get() calls across main.py, db.py, video/stream_manager.py).
+import json
 import os
 from dotenv import load_dotenv
 
@@ -13,6 +14,16 @@ APP_MODE = os.environ.get("APP_MODE", "DEMO")  # DEMO | LIVE -- docs/frontend.md
 # GET {INGEST_API_BASE_URL}/api/ingest returns the camera catalogue + RTSP/WHEP/HLS URLs.
 # Unset until organizers provide the live host for the hackathon's infrastructure.
 INGEST_API_BASE_URL = os.environ.get("INGEST_API_BASE_URL", "")
+
+# Real-payload field-name overrides for integration/ingest_sync.py -- docs/backend.md
+# §12.7. A JSON object string, e.g. '{"vendor": "vms_vendor", "cam_id": "camera_uid"}'.
+# Lets a rename in the real (currently unknown) /api/ingest payload be fixed by
+# restarting with a new env var instead of editing code. Empty until there's a real
+# payload to look at -- see integration/ingest_sync.py's preview_ingest_catalogue().
+try:
+    INGEST_FIELD_ALIASES = json.loads(os.environ.get("INGEST_FIELD_ALIASES", "{}"))
+except json.JSONDecodeError:
+    INGEST_FIELD_ALIASES = {}
 
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
 

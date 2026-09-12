@@ -19,7 +19,7 @@ from db.database import get_db
 import schemas.camera as schemas
 import services.camera_service as camera_service
 from integration.discovery_adapter import SentinelCameraSource
-from integration.ingest_sync import sync_from_ingest_api
+from integration.ingest_sync import sync_from_ingest_api, preview_ingest_catalogue
 from core.security import require_admin, get_current_user, log_action
 from models.user import User
 
@@ -31,6 +31,20 @@ async def gap_analysis(expected_minimum: int = 3, db: Session = Depends(get_db),
     """Coverage-shortfall report by district x department -- docs/frontend.md §3.1 Row 4
     / §3.7, the Model 1 "gap-analysis report" requirement (docs/prd.md §0.1)."""
     return {"gaps": camera_service.get_gap_analysis(db, expected_minimum)}
+
+
+@router.get("/ingest-preview")
+async def ingest_preview(admin: User = Depends(require_admin)):
+    """Fetches the real /api/ingest catalogue AS-IS -- no normalization, no DB writes
+    -- docs/backend.md §12.7. Use this first the moment INGEST_API_BASE_URL is
+    configured, to see the real field names before trusting sync-ingest with writes;
+    see integration/ingest_sync.py's module docstring."""
+    try:
+        return preview_ingest_catalogue()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to reach ingest API: {e}")
 
 
 @router.post("/sync-ingest", response_model=schemas.ImportSummaryResponse)
