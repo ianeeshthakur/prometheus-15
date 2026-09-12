@@ -1,1 +1,20 @@
-# fastapi, uvicorn, sqlalchemy, python-dotenv, opencv-python-headless, pydantic -- pin versions once decided.
+# Ported from contrib/aneesh/backend/requirements.txt. Exact pins relaxed to minimum
+# versions below (docs/backend.md §12) -- the original exact pins predate Python 3.13
+# and have no prebuilt wheel for pydantic-core on it, which forces a Rust source build
+# that fails here without a working MSVC link step. `>=` lets pip pick a version with a
+# real cp313 wheel instead. Re-pin exact versions once the team settles on a target
+# Python version for deployment.
+fastapi[standard]>=0.115.0
+uvicorn>=0.32.0
+python-dotenv>=1.0.1
+aiofiles>=23.2.1
+websockets>=13.0
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+sse-starlette>=2.1.0
+psutil>=5.9.8
+sqlalchemy>=2.0.0
+python-multipart>=0.0.9
+opencv-python-headless
+numpy
+requests>=2.31.0
