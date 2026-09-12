@@ -51,7 +51,7 @@ def sync_from_ingest_api(db: Session, timeout_seconds: int = 15) -> ImportSummar
     for idx, item in enumerate(catalogue):
         try:
             cam_data = SentinelCameraSource.normalize(_map_ingest_fields(item))
-            _, is_created = camera_service.upsert_camera(db, cam_data)
+            _, is_created = camera_service.upsert_camera(db, cam_data, onboarding_source="API_INGEST")
             if is_created:
                 created += 1
             else:

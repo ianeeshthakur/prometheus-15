@@ -45,11 +45,13 @@ def test_full_alert_to_investigation_flow(client, auth_headers):
         "status": "ACTIVE",
         "ai_enabled": True,
     }
-    resp = client.post("/api/cameras/", json=cam)
+    resp = client.post("/api/cameras/", json=cam, headers=auth_headers)
     assert resp.status_code in (201, 409)
 
     resp = client.post(
-        "/api/watchlists/", json={"identifier": "GJ11INV0001", "category": "STOLEN_VEHICLE", "risk_level": "CRITICAL"}
+        "/api/watchlists/",
+        json={"identifier": "GJ11INV0001", "category": "STOLEN_VEHICLE", "risk_level": "CRITICAL"},
+        headers=auth_headers,
     )
     assert resp.status_code == 201, resp.text
 
@@ -69,7 +71,7 @@ def test_full_alert_to_investigation_flow(client, auth_headers):
     asyncio.run(feed_event())
 
     # 3. A real, persisted Alert must now exist -- not just a transient SSE broadcast.
-    resp = client.get("/api/alerts/", params={"severity": "CRITICAL"})
+    resp = client.get("/api/alerts/", params={"severity": "CRITICAL"}, headers=auth_headers)
     assert resp.status_code == 200
     matches = [a for a in resp.json() if a["entity"] == "GJ11INV0001"]
     assert len(matches) == 1, f"Expected 1 persisted alert, got: {resp.json()}"
@@ -93,18 +95,18 @@ def test_full_alert_to_investigation_flow(client, auth_headers):
     case_uid = case["case_uid"]
 
     # 6. The alert now links back to the investigation.
-    resp = client.get(f"/api/alerts/{alert['alert_uid']}")
+    resp = client.get(f"/api/alerts/{alert['alert_uid']}", headers=auth_headers)
     assert resp.json()["investigation_id"] == case["id"]
 
     # 7. Timeline includes both the event and the alert.
-    resp = client.get(f"/api/investigations/{case_uid}/timeline")
+    resp = client.get(f"/api/investigations/{case_uid}/timeline", headers=auth_headers)
     assert resp.status_code == 200
     timeline = resp.json()
     assert any(e["identifier"] == "GJ11INV0001" for e in timeline["events"])
     assert any(a["entity"] == "GJ11INV0001" for a in timeline["alerts"])
 
     # 8. Map trace -- the graded vehicle-tracking test's shape (docs/prd.md §0.1).
-    resp = client.get(f"/api/investigations/{case_uid}/trace")
+    resp = client.get(f"/api/investigations/{case_uid}/trace", headers=auth_headers)
     assert resp.status_code == 200
     trace = resp.json()
     assert trace["entity"] == "GJ11INV0001"
@@ -121,5 +123,5 @@ def test_full_alert_to_investigation_flow(client, auth_headers):
         headers=auth_headers,
     )
     assert resp.status_code == 201
-    resp = client.get(f"/api/investigations/{case_uid}/evidence")
+    resp = client.get(f"/api/investigations/{case_uid}/evidence", headers=auth_headers)
     assert len(resp.json()) == 1

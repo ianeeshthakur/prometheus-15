@@ -12,7 +12,7 @@
 # AI profile is read per-camera from Camera.ai_profile (docs/frontend.md §3.8 "AI &
 # datasets" tab) -- fixed during docs/backend.md §12.3 cleanup; previously hardcoded to
 # TRAFFIC for every camera regardless of what was stored.
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, Depends
 from sse_starlette.sse import EventSourceResponse
 import asyncio
 import json
@@ -27,6 +27,8 @@ from ai.orchestrator import AIOrchestrator
 from ai.schemas import AIProfile
 from intelligence.events import NormalizedEvent
 from intelligence.alert_engine import alert_engine
+from core.security import get_current_user, log_action
+from models.user import User
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,7 +37,11 @@ _orchestrators = {profile: AIOrchestrator(profile) for profile in AIProfile}
 
 
 @router.post("/{camera_id}/start")
-async def start_stream(camera_id: str, background_tasks: BackgroundTasks):
+async def start_stream(
+    camera_id: str, background_tasks: BackgroundTasks, user: User = Depends(get_current_user)
+):
+    """Auth-required as of docs/backend.md §12.5 -- this spawns a real FFmpeg
+    subprocess, shouldn't be triggerable by an unauthenticated caller."""
     db = SessionLocal()
     try:
         camera = camera_service.get_camera_by_uid(db, camera_id)
@@ -52,12 +58,14 @@ async def start_stream(camera_id: str, background_tasks: BackgroundTasks):
     if camera.ai_enabled:
         background_tasks.add_task(_run_ai_pipeline, camera_id)
 
+    log_action("STREAM_STARTED", user=user, resource_type="camera", resource_id=camera_id)
     return {"status": "success", "message": "Stream started", "hls_url": f"/hls/{camera_id}/index.m3u8"}
 
 
 @router.post("/{camera_id}/stop")
-async def stop_stream(camera_id: str):
+async def stop_stream(camera_id: str, user: User = Depends(get_current_user)):
     await stream_manager.stop_stream(camera_id)
+    log_action("STREAM_STOPPED", user=user, resource_type="camera", resource_id=camera_id)
     return {"status": "success", "message": "Stream stopped"}
 
 

@@ -21,15 +21,20 @@ async def list_alerts(
     district: Optional[str] = None,
     camera_uid: Optional[str] = None,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     return alert_service.list_alerts(db, severity, status, district, camera_uid)
 
 
 @router.get("/{alert_uid}", response_model=AlertResponse)
-async def get_alert(alert_uid: str, db: Session = Depends(get_db)):
+async def get_alert(alert_uid: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Audit-logged -- docs/backend.md §12.5: unlike the list endpoint above (routine
+    triage browsing), opening one specific alert's full detail is the kind of access a
+    real audit trail should show."""
     alert = alert_service.get_response_by_uid(db, alert_uid)
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
+    log_action("ALERT_VIEWED", user=user, resource_type="alert", resource_id=alert_uid, db=db)
     return alert
 
 

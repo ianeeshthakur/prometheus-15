@@ -30,6 +30,12 @@ class Camera(Base):
     # pipeline. Fixed during docs/backend.md §12.3 cleanup -- previously every camera
     # was hardcoded to TRAFFIC.
     ai_profile = Column(String, nullable=False, default="TRAFFIC")
+    # Which onboarding path created this row -- MANUAL, BULK_CSV, BULK_JSON, or
+    # API_INGEST (the /api/ingest sync, docs/backend.md §2). Model 1's requirement
+    # names all three onboarding paths explicitly; this is what lets the registry
+    # actually report which one any given camera came through, closing a gap fixed
+    # during docs/backend.md §12.5's cleanup.
+    onboarding_source = Column(String, nullable=False, default="MANUAL")
 
     # Internal connection info, never exposed to frontend GET APIs directly
     # (see core/security.py -- CameraResponse simply omits this field).

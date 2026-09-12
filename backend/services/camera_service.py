@@ -16,8 +16,8 @@ def get_camera_by_uid(db: Session, camera_uid: str) -> Optional[Camera]:
     return db.query(Camera).filter(Camera.camera_uid == camera_uid).first()
 
 
-def create_camera(db: Session, camera_in: CameraCreate) -> Camera:
-    db_obj = Camera(**camera_in.model_dump())
+def create_camera(db: Session, camera_in: CameraCreate, onboarding_source: str = "MANUAL") -> Camera:
+    db_obj = Camera(**camera_in.model_dump(), onboarding_source=onboarding_source)
     db.add(db_obj)
     db.commit()
     db.refresh(db_obj)
@@ -41,9 +41,16 @@ def list_cameras(
     protocol_type: Optional[str] = None,
     vms_vendor: Optional[str] = None,
     status: Optional[str] = None,
+    department_scope: Optional[str] = None,
 ) -> List[Camera]:
+    """`department_scope` is the *caller's* RBAC restriction (an OPERATOR's
+    `User.department_scope`, docs/frontend.md §3.7's "role-based search" requirement)
+    -- authoritative, applied regardless of what `department` the caller asked for.
+    `department` is just an ordinary filter, same as the others."""
     query = db.query(Camera)
-    if department:
+    if department_scope:
+        query = query.filter(Camera.department == department_scope)
+    elif department:
         query = query.filter(Camera.department == department)
     if district:
         query = query.filter(Camera.district == district)
@@ -56,13 +63,13 @@ def list_cameras(
     return query.all()
 
 
-def upsert_camera(db: Session, camera_in: CameraCreate) -> tuple[Camera, bool]:
+def upsert_camera(db: Session, camera_in: CameraCreate, onboarding_source: str = "API_INGEST") -> tuple[Camera, bool]:
     """Idempotent camera creation. Returns (Camera, is_created)."""
     existing_camera = get_camera_by_uid(db, camera_in.camera_uid)
     if existing_camera:
         return update_camera(db, existing_camera, camera_in), False
     try:
-        return create_camera(db, camera_in), True
+        return create_camera(db, camera_in, onboarding_source=onboarding_source), True
     except IntegrityError:
         # Race condition handling
         db.rollback()

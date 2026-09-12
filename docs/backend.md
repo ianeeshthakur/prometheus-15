@@ -60,8 +60,97 @@ Every adapter normalizes its protocol into the same `NormalizedFrame` shape so t
 - Postgres, extended with **PostGIS**, is the target for anything spatial (Model 1's GIS registry, the coverage gap-analysis report, department/district spatial queries; suggested by the hackathon's own stack list). SQLite (current `.env.example` default) stays the local-dev default.
 - [x] **Migration written**: `backend/migrations/001_postgis_setup.sql` — enables the extension, adds a `geom geometry(Point, 4326)` column alongside the existing lat/lng floats, backfills it, adds a GIST index, and a trigger to keep it in sync on insert/update. **Unverified against a real Postgres instance** — none is available in this dev environment; review/dry-run before applying anywhere that matters. Doesn't touch the SQLite path at all — `models/camera.py` keeps plain float columns regardless of which DB is configured.
 - All 6 registry-adjacent models are now real: `camera.py` (department, district, protocol, vendor, geolocation, status, `ai_enabled`, `ai_profile`), `watchlist.py` (`WatchlistEntry` + `WatchlistMatch`), `user.py` (`User` + `AuditLogEntry`), `event.py` (`CameraEvent`), `alert.py` (`Alert`), `investigation.py` (`Investigation` + `InvestigationEvidence`), `admin_settings.py` (`FacialRecognitionAuthorization`) — each backed by a `schemas/*.py` Pydantic pair. Built during the §12.4 build-out (2026-09-12), designed against `lib/types.ts`'s frontend shapes where one already existed (`Alert`, `CameraEvent`), and against `docs/frontend.md`'s textual spec where it didn't (`Investigation` — that page was still a placeholder when this was written).
-- Onboarding source (bulk/manual/API) is still not a stored column on `Camera` — inferred only by which endpoint was called, not persisted per-row.
-- [ ] **ER diagram** — still not drawn; 7 models now have real schemas, this is overdue but hasn't blocked anything yet.
+- [x] Onboarding source is now a stored column on `Camera` (`onboarding_source`: `MANUAL` / `BULK_CSV` / `BULK_JSON` / `API_INGEST`, set server-side per endpoint, never client-settable) — closed docs/backend.md §12.5.
+- [x] **ER diagram** (below) — 7 models now have real schemas; `Timeline`/`Map trace` deliberately have no boxes of their own since they're derived queries, not tables (`models/investigation.py`'s docstring).
+
+```mermaid
+erDiagram
+    Camera ||--o{ CameraEvent : "camera_uid"
+    Camera ||--o{ Alert : "camera_uid"
+    WatchlistEntry ||--o{ WatchlistMatch : "watchlist_entry_id"
+    WatchlistEntry |o--o{ Alert : "watchlist_entry_id (optional)"
+    Investigation ||--o{ InvestigationEvidence : "investigation_id"
+    Investigation |o--o{ Alert : "investigation_id (optional, set when opened from an alert)"
+    CameraEvent |o--o{ InvestigationEvidence : "reference_event_id (optional)"
+    User |o--o{ AuditLogEntry : "user_id (optional, denormalized username survives deletion)"
+    User |o--o{ FacialRecognitionAuthorization : "authorized_by (username, not FK)"
+
+    Camera {
+        int id PK
+        string camera_uid UK
+        string department
+        string district
+        string protocol_type
+        string status
+        string ai_profile
+        string onboarding_source
+        float latitude
+        float longitude
+        string rtsp_url "never serialized to a response"
+    }
+    CameraEvent {
+        int id PK
+        string event_uid UK
+        string camera_uid FK
+        string event_type
+        string identifier "normalized plate -- what entity_graph.py correlates on"
+        float confidence
+    }
+    Alert {
+        int id PK
+        string alert_uid UK
+        string severity
+        string type
+        string camera_uid FK
+        int watchlist_entry_id FK "nullable"
+        int investigation_id FK "nullable"
+        string status
+    }
+    WatchlistEntry {
+        int id PK
+        string identifier
+        string category
+        string risk_level
+        bool active
+    }
+    WatchlistMatch {
+        int id PK
+        int watchlist_entry_id FK
+        string camera_uid
+        string matched_value
+    }
+    Investigation {
+        int id PK
+        string case_uid UK
+        string entity "what Timeline/Trace query CameraEvent/Alert by"
+        string status
+        string priority
+    }
+    InvestigationEvidence {
+        int id PK
+        int investigation_id FK
+        string evidence_type
+        int reference_event_id FK "nullable"
+    }
+    User {
+        int id PK
+        string username UK
+        string role "ADMIN or OPERATOR"
+        string department_scope "nullable, OPERATOR only"
+    }
+    AuditLogEntry {
+        int id PK
+        int user_id FK "nullable"
+        string action
+        string resource_type
+    }
+    FacialRecognitionAuthorization {
+        int id PK
+        bool enabled
+        string authorized_by
+        string reason "required"
+    }
+```
 
 ## 5. Pipelines owned by the backend
 
@@ -137,11 +226,33 @@ Alert severity scoring, delivery, and investigation case-file CRUD backing front
 ## 7. Security & privacy posture
 
 - No credential or raw camera IP ever reaches the browser (carried forward unchanged from the project's original rules).
-- [x] **Auth + RBAC** — `core/security.py` (JWT via `pyjwt`, password hashing via `bcrypt` directly — not `passlib`, see requirements.txt's comment for why), `models/user.py` (`User`: `ADMIN` sees every department, `OPERATOR` is scoped to one via `department_scope`, feeding frontend.md §3.7's "role-based search"), `routers/auth.py`. A first `ADMIN` account is bootstrapped automatically on a fresh DB from `ADMIN_BOOTSTRAP_USERNAME`/`ADMIN_BOOTSTRAP_PASSWORD` (loud, obvious defaults — override before any real use) since there's otherwise no way to log in at all. Not yet wired into every route that arguably needs it (e.g. `GET /api/cameras/` has no auth requirement today) — only the routes where a write or a privileged read made it an obvious first cut.
-- [x] **Audit log** — `models/user.AuditLogEntry` + `core/security.log_action()`, `GET /api/admin/audit-log`. Wired into: login, user creation, alert status changes, investigation creation/status/evidence, camera→investigation linking, ingest sync, facial-recognition authorization. **Not** wired into every alert *view* yet (frontend.md §3.8 literally says "every alert view" — that's a lot of log volume for a read; revisit if that's really the intent or if "view" meant "action taken while viewing").
+- [x] **Auth + RBAC** — `core/security.py` (JWT via `pyjwt`, password hashing via `bcrypt` directly — not `passlib`, see requirements.txt's comment for why), `models/user.py` (`User`: `ADMIN` sees every department, `OPERATOR` is scoped to one via `department_scope`). A first `ADMIN` account is bootstrapped automatically on a fresh DB from `ADMIN_BOOTSTRAP_USERNAME`/`ADMIN_BOOTSTRAP_PASSWORD` (loud, obvious defaults — override before any real use) since there's otherwise no way to log in at all. **Auth is now required on every route that reads or writes registry/watchlist/alert/investigation/adapter data** (docs/backend.md §12.5 closed the earlier gap) — only `GET /`, `GET /api/health/`, and `GET /api/ai/*`'s diagnostic endpoints stay open, matching common liveness/readiness-probe practice.
+- [x] **Role-based search** (frontend.md §3.7) — actually enforced now, not just modeled: `GET /api/cameras/` and `GET /api/cameras/{camera_uid}` apply an `OPERATOR`'s `department_scope` server-side regardless of what the caller requests (`services/camera_service.list_cameras`'s `department_scope` param overrides the `department` filter; direct lookup of an out-of-scope camera is a 403, not a silent 200). Tested in `tests/test_cameras.py::test_operator_department_scope_enforced`.
+- [x] **Audit log** — `models/user.AuditLogEntry` + `core/security.log_action()`, `GET /api/admin/audit-log`. Wired into every write action (login, user/camera/watchlist creation, alert status changes, investigation creation/status/evidence, stream start/stop, ingest sync, facial-recognition authorization) **and** into viewing one specific alert or investigation (`ALERT_VIEWED`, `INVESTIGATION_VIEWED`). Deliberately **not** wired into list endpoints — logging every page of a triage queue someone scrolls through is volume without much audit value; logging that they opened *this specific* alert/case is the meaningful signal. This was a judgment call, not an oversight — revisit if it turns out "every alert view" in frontend.md §3.8 meant something more literal.
 - [x] **Facial recognition / biometric identification** — gated behind an explicit authorization workflow, never a default (`is_currently_enabled()` returns `False` when no authorization row exists at all). `models/admin_settings.FacialRecognitionAuthorization`: each row is one authorization *event* (grant or revoke) with a required `reason` and `authorized_by`, not a single mutable flag — the table itself is the audit trail. `GET/POST /api/admin/facial-recognition*`, admin-only to authorize. Grounded in India's DPDP Act, 2023 and the Puttaswamy privacy judgment.
 - [x] **Mock government database lookups** — `integration/mock_gov_adapters.py` (VAHAN, SARTHI, eGujCop, AFIS, NAFIS), `GET /api/admin/gov-lookup/*`. Every response carries `"mock": true` and an explanatory message; no real credentialed access exists or is attempted.
-- [ ] Single consolidated threat model / security posture doc — not yet written; this section is still the seed of it, now with more to consolidate.
+
+### 7.1 Threat model (consolidated 2026-09-12, docs/backend.md §12.5)
+
+What this section protects against, what it explicitly doesn't yet, and why -- one place instead of scattered across commit messages.
+
+| Threat | Mitigation | Status |
+|---|---|---|
+| Unauthenticated access to camera locations, watchlist entries, alerts, investigations | JWT auth required on every registry/watchlist/alert/investigation/adapter route | Done, tested |
+| An `OPERATOR` reading another department's cameras | `department_scope` enforced server-side, not just modeled | Done, tested |
+| Credential/raw camera IP (`rtsp_url`) leaking to the frontend | `CameraResponse` schema simply omits the field — SQLAlchemy never serializes what isn't in the response model | Done since the original port (§0) |
+| Silent facial-recognition/biometric use | Explicit, reasoned, audited authorization required; off by default | Done |
+| Untraceable privileged actions (who acknowledged this alert, who created this camera) | Audit log on every write + individual-record views | Done |
+| Password compromise via a broken hashing library | `bcrypt` used directly (not `passlib`, which was silently mis-hashing under a version mismatch — caught by testing, §12.4) | Done |
+| False-positive watchlist alerts from an untuned fuzzy-match threshold | Fuzzy matching built but OFF by default; needs real OCR error-rate data to enable responsibly | Deliberately not done |
+| A compromised/weak `SECRET_KEY` in production | Loud, obviously-a-placeholder default; **not enforced** — nothing stops someone deploying with the default | **Open** — consider failing startup if `SECRET_KEY` is still the default and `APP_MODE=LIVE` |
+| Brute-forcing `/api/auth/login` | None — no rate limiting exists anywhere in this backend | **Open** |
+| A leaked JWT being usable until natural expiry (8h default) | None — no revocation/blocklist exists; `JWT_EXPIRE_MINUTES` is the only bound | **Open** |
+| SQL injection | SQLAlchemy's query builder is used everywhere (no raw string-interpolated SQL) | Believed safe, not formally audited |
+| A malicious CSV/JSON camera-import payload | `SentinelCameraSource.normalize()` validates every field and reports per-row errors; doesn't sanitize free-text fields (`name`, `location`, etc.) against e.g. stored-XSS if ever rendered unescaped by a future frontend | Partially done — revisit once the frontend actually renders these fields |
+| Mock government-lookup responses being mistaken for real data | Every response carries `"mock": true` plus an explanatory message | Done |
+
+Three items above are genuinely open and worth flagging before any deployment beyond a hackathon demo: **rate limiting**, **token revocation**, and **failing loud if `SECRET_KEY` is still the default in a `LIVE` deployment**. None were in scope for this pass; none should be mistaken for "handled."
 
 ## 8. Testing strategy
 
@@ -249,14 +360,27 @@ Every item that was in this section as "not built" is now built, with one delibe
 
 Two real bugs were caught and fixed while building this, both from writing an actual test rather than trusting the code: a `passlib`/modern-`bcrypt` incompatibility that broke password hashing entirely (switched to `bcrypt` directly, see `requirements.txt`'s comment), and a `DetachedInstanceError` from reading ORM attributes after the session that fetched them had committed and closed (`intelligence/alert_engine.py` — fixed by snapshotting needed fields before the commit, same fix as the earlier §12.3 watchlist bug, so this pattern is now worth watching for elsewhere).
 
-### 12.5 Remaining known gaps (small, deliberate, or blocked on something external)
+### 12.5 Closed (2026-09-13 — verified against 37 passing pytest tests)
 
-- [ ] Fuzzy (Levenshtein/Jaro-Winkler) watchlist matching — needs real OCR error-rate data to set a defensible threshold; deliberately not guessed (`intelligence/watchlist_matcher.py`'s docstring)
-- [ ] Appearance-based re-identification for cross-camera correlation beyond exact plate match — ai_pipelines.md §5 differentiator, not started
-- [ ] Auth not enforced on every route that arguably needs it — only writes/privileged reads got it in this pass (§7)
-- [ ] Audit log not wired into every alert *view* (only actions) — worth confirming that's really the intent given the log-volume implications (§7)
-- [ ] ER diagram still not drawn, now overdue given 7 models have real schemas (§4)
-- [ ] Onboarding source (bulk/manual/API) not a stored column on `Camera` (§4)
-- [ ] Per-test database isolation in pytest — session-scoped DB works but isn't ideal (§8)
-- [ ] Single consolidated threat-model doc (§7)
-- [ ] `/api/ingest` field-mapping in `integration/ingest_sync.py` is a best-effort guess at undocumented parts of the payload shape — will need adjusting once a real payload can be inspected
+Every item from this section's previous pass is now closed, two of them as deliberate, honest partial-completions rather than the full (currently unbuildable) thing:
+
+- [x] **Fuzzy watchlist matching** — the algorithm (`intelligence/watchlist_matcher.py`'s `levenshtein_distance` + `_match_fuzzy`) is real and unit-tested, but wired **off by default** (`ENABLE_FUZZY_WATCHLIST_MATCHING`) since an untuned distance threshold still risks false-positive alerts — the capability is complete, the threshold-tuning decision correctly isn't.
+- [x] **Appearance-based re-identification scaffolding** — `ai/interfaces.py`'s `ReIdentificationProvider` + `ai/mock_providers.py`'s `MockReIdentificationProvider`, matching every other detector's mock/real swap pattern (ai/README.md). Tested that the plumbing works (`tests/test_reid_scaffolding.py`); **not** wired into `intelligence/entity_graph.py`'s real trace logic, and the mock carries zero real appearance information by design — see the interface's docstring for why faking this into the graded live-test path would be dishonest.
+- [x] **Auth enforced on every route** that reads or writes registry/watchlist/alert/investigation/adapter/stream data — closed across `routers/cameras.py`, `watchlists.py`, `alerts.py`, `investigations.py`, `adapters.py`, `streams.py`. Only true liveness/diagnostic endpoints (`GET /`, `/api/health/`, `/api/ai/*`) stay open.
+- [x] **Role-based search actually enforced**, not just modeled — `department_scope` now filters `GET /api/cameras/*` server-side (§7).
+- [x] **Audit log on individual-record views** (`ALERT_VIEWED`, `INVESTIGATION_VIEWED`), deliberately not on list endpoints — see §7's reasoning.
+- [x] **ER diagram** — drawn (§4, Mermaid).
+- [x] **Onboarding source** — real stored column (`Camera.onboarding_source`), tested per onboarding path (§4).
+- [x] **Per-test database isolation** — not the full per-function rewrite (still not worth the `db/database.py` restructuring it would need), but a real fix for the actual risk: an autouse, module-scoped fixture wipes every operational table between test *files*, eliminating cross-file contamination. Verified by running a subset of files in a different order than pytest's default collection order (`tests/conftest.py`).
+- [x] **Single consolidated threat model** — §7.1, table format, including the three items it surfaced as genuinely still open (see below).
+
+### 12.6 Remaining known gaps (genuinely open, not glossed over)
+
+- [ ] `/api/ingest` field-mapping in `integration/ingest_sync.py` — a best-effort guess at undocumented parts of the payload shape, permanently unverifiable until organizers publish a real endpoint; nothing to build here, only to adjust once that happens
+- [ ] Fuzzy watchlist matching's distance threshold — needs real OCR error-rate data (ai_pipelines.md §6/§7), same blocker as above in spirit
+- [ ] Real appearance-based re-identification model — needs real training data/a real model, not just the interface
+- [ ] Rate limiting on `/api/auth/login` (§7.1)
+- [ ] JWT revocation/blocklist (§7.1)
+- [ ] No startup check that fails loudly if `SECRET_KEY` is still the default in a `LIVE` deployment (§7.1)
+- [ ] SQL-injection posture believed safe (SQLAlchemy's query builder used throughout) but not formally audited (§7.1)
+- [ ] Free-text camera fields (`name`, `location`, etc.) aren't sanitized against stored-XSS if a future frontend ever renders them unescaped (§7.1)

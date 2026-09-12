@@ -6,6 +6,8 @@ from pydantic import BaseModel
 
 from db.database import get_db
 from adapters.factory import AdapterFactory
+from core.security import get_current_user
+from models.user import User
 
 router = APIRouter()
 
@@ -17,9 +19,11 @@ class AdapterHealthResponse(BaseModel):
 
 
 @router.get("/{camera_uid}/adapter/health", response_model=AdapterHealthResponse)
-async def check_adapter_health(camera_uid: str, db: Session = Depends(get_db)):
+async def check_adapter_health(camera_uid: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Diagnostic endpoint for Pipeline 2 adapter connections. Strictly returns
-    metadata -- never exposes rtsp_url or credentials."""
+    metadata -- never exposes rtsp_url or credentials. Auth-required as of
+    docs/backend.md §12.5 -- this actively opens a live network connection to the
+    camera, which shouldn't be triggerable by an unauthenticated caller."""
     try:
         adapter = AdapterFactory.get_camera_adapter(camera_uid, db)
     except ValueError as e:

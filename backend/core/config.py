@@ -29,3 +29,10 @@ JWT_EXPIRE_MINUTES = int(os.environ.get("JWT_EXPIRE_MINUTES", "480"))  # 8h shif
 # purpose so it's obviously a placeholder.
 ADMIN_BOOTSTRAP_USERNAME = os.environ.get("ADMIN_BOOTSTRAP_USERNAME", "admin")
 ADMIN_BOOTSTRAP_PASSWORD = os.environ.get("ADMIN_BOOTSTRAP_PASSWORD", "changeme123")
+
+# Fuzzy watchlist matching (intelligence/watchlist_matcher.py) -- OFF by default. See
+# that module's docstring: the algorithm is real and tested, but an untuned distance
+# threshold risks false-positive watchlist alerts. Only flip this on once real OCR
+# error-rate data justifies FUZZY_WATCHLIST_MAX_DISTANCE.
+ENABLE_FUZZY_WATCHLIST_MATCHING = os.environ.get("ENABLE_FUZZY_WATCHLIST_MATCHING", "false").lower() == "true"
+FUZZY_WATCHLIST_MAX_DISTANCE = int(os.environ.get("FUZZY_WATCHLIST_MAX_DISTANCE", "1"))

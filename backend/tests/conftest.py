@@ -4,9 +4,16 @@
 #
 # DB fixture is session-scoped (one app/DB for the whole pytest run), not per-test --
 # a true per-test-isolated DB would need engine/SessionLocal recreated per test, which
-# isn't practical without restructuring db/database.py's module-level singletons. Test
-# functions below use distinct identifiers per concern (same convention the original
-# standalone scripts used) specifically so they can safely share one DB across a run.
+# isn't practical without restructuring db/database.py's module-level singletons.
+# Compromise, closing part of docs/backend.md §12.5's isolation gap: an autouse,
+# module-scoped fixture below wipes every operational table (camera/alert/watchlist/
+# investigation/event/facial-recognition data -- NOT users or the audit log, which
+# need to survive for auth and audit-continuity to keep working across files) after
+# each test *file* finishes. This eliminates cross-file contamination, which was the
+# actual risk; tests *within* one file still intentionally share state in sequence
+# (verified: no test file currently depends on another file's data, only on its own
+# earlier tests) using the same distinct-identifier convention the original standalone
+# scripts used.
 import os
 import sys
 
@@ -51,3 +58,34 @@ def admin_token(client):
 @pytest.fixture
 def auth_headers(admin_token):
     return {"Authorization": f"Bearer {admin_token}"}
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _clean_operational_tables_after_module(client):
+    """See the module docstring above for why this is module-scoped, not
+    function-scoped, and why User/AuditLogEntry are excluded."""
+    yield
+    from db.database import SessionLocal
+    from models.camera import Camera
+    from models.event import CameraEvent
+    from models.alert import Alert
+    from models.watchlist import WatchlistEntry, WatchlistMatch
+    from models.investigation import Investigation, InvestigationEvidence
+    from models.admin_settings import FacialRecognitionAuthorization
+
+    db = SessionLocal()
+    try:
+        for model in (
+            InvestigationEvidence,
+            Investigation,
+            Alert,
+            WatchlistMatch,
+            WatchlistEntry,
+            CameraEvent,
+            Camera,
+            FacialRecognitionAuthorization,
+        ):
+            db.query(model).delete()
+        db.commit()
+    finally:
+        db.close()

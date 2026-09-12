@@ -31,7 +31,12 @@ def _get_case_or_404(db: Session, case_uid: str):
 
 
 @router.get("/", response_model=List[InvestigationResponse])
-async def list_investigations(status: Optional[str] = None, entity: Optional[str] = None, db: Session = Depends(get_db)):
+async def list_investigations(
+    status: Optional[str] = None,
+    entity: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     return investigation_service.list_investigations(db, status, entity)
 
 
@@ -45,8 +50,12 @@ async def create_investigation(
 
 
 @router.get("/{case_uid}", response_model=InvestigationResponse)
-async def get_investigation(case_uid: str, db: Session = Depends(get_db)):
-    return _get_case_or_404(db, case_uid)
+async def get_investigation(case_uid: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Audit-logged -- docs/backend.md §12.5: unlike list endpoints (routine browsing),
+    opening one specific case is the kind of access a real audit trail should show."""
+    case = _get_case_or_404(db, case_uid)
+    log_action("INVESTIGATION_VIEWED", user=user, resource_type="investigation", resource_id=case_uid, db=db)
+    return case
 
 
 @router.patch("/{case_uid}/status", response_model=InvestigationResponse)
@@ -63,13 +72,13 @@ async def update_investigation_status(
 
 
 @router.get("/{case_uid}/timeline", response_model=TimelineResponse)
-async def get_timeline(case_uid: str, db: Session = Depends(get_db)):
+async def get_timeline(case_uid: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     case = _get_case_or_404(db, case_uid)
     return investigation_service.get_timeline(db, case)
 
 
 @router.get("/{case_uid}/trace", response_model=TraceResponse)
-async def get_trace(case_uid: str, db: Session = Depends(get_db)):
+async def get_trace(case_uid: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """docs/frontend.md §3.5's "Map trace" tab -- also the graded hackathon-day
     vehicle-tracking test (docs/prd.md §0.1) once wired to real camera feeds."""
     case = _get_case_or_404(db, case_uid)
@@ -78,7 +87,7 @@ async def get_trace(case_uid: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{case_uid}/evidence", response_model=List[EvidenceResponse])
-async def list_evidence(case_uid: str, db: Session = Depends(get_db)):
+async def list_evidence(case_uid: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     case = _get_case_or_404(db, case_uid)
     return investigation_service.list_evidence(db, case)
 

@@ -21,6 +21,16 @@ class CameraStatus(str, Enum):
     OFFLINE = "OFFLINE"
 
 
+class OnboardingSource(str, Enum):
+    """Which path created this camera row -- Model 1 names all three explicitly.
+    Server-assigned only (services/camera_service.py), never client-settable."""
+
+    MANUAL = "MANUAL"
+    BULK_CSV = "BULK_CSV"
+    BULK_JSON = "BULK_JSON"
+    API_INGEST = "API_INGEST"
+
+
 class CameraBase(BaseModel):
     camera_uid: str
     name: str
@@ -58,6 +68,7 @@ class CameraCreate(CameraBase):
 
 class CameraResponse(CameraBase):
     id: int
+    onboarding_source: OnboardingSource = OnboardingSource.MANUAL
     created_at: datetime
     updated_at: datetime
 

@@ -4,7 +4,7 @@ import uuid
 from typing import List, Optional
 import numpy as np
 
-from .interfaces import VehicleDetector, PersonDetector, AnomalyDetector, PlateDetector, OCRProvider
+from .interfaces import VehicleDetector, PersonDetector, AnomalyDetector, PlateDetector, OCRProvider, ReIdentificationProvider
 from .schemas import DetectionResult, AnomalyResult
 
 
@@ -76,3 +76,33 @@ class MockOCRProvider(OCRProvider):
             "normalized_text": "GJ05XX7821",
             "ocr_confidence": 0.85,
         }
+
+
+class MockReIdentificationProvider(ReIdentificationProvider):
+    """NOT a real embedding model -- docs/backend.md §12.5. Exists only so pipeline
+    code can be exercised end-to-end (extract an embedding, compare two embeddings)
+    before a real model exists; the embedding is derived from crop dimensions alone,
+    which carries zero real appearance information. similarity() is NOT calibrated
+    against anything and must never be used to gate a real match -- nothing in the
+    pipeline calls this provider yet (see ai/interfaces.py's ReIdentificationProvider
+    docstring for why)."""
+
+    _EMBEDDING_DIM = 8
+
+    def extract_embedding(self, frame_crop: np.ndarray) -> List[float]:
+        height, width = frame_crop.shape[:2]
+        aspect = width / height if height else 0.0
+        # Deterministic, dimension-derived filler -- explicitly not a real appearance
+        # embedding. Fixed length so downstream code can exercise real vector-math
+        # shapes without a real model.
+        return [float(height), float(width), aspect] + [0.0] * (self._EMBEDDING_DIM - 3)
+
+    def similarity(self, embedding_a: List[float], embedding_b: List[float]) -> float:
+        if not embedding_a or not embedding_b or len(embedding_a) != len(embedding_b):
+            return 0.0
+        dot = sum(a * b for a, b in zip(embedding_a, embedding_b))
+        norm_a = sum(a * a for a in embedding_a) ** 0.5
+        norm_b = sum(b * b for b in embedding_b) ** 0.5
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot / (norm_a * norm_b)  # cosine similarity -- real math, meaningless inputs

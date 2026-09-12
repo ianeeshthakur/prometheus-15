@@ -3,6 +3,12 @@
 # merge removed (see adapters/factory.py's docstring for why) -- the DB is now the single
 # source of truth, satisfying Model 1's requirement directly rather than merging two
 # registries.
+#
+# Auth required on list/get as of docs/backend.md §12.5's cleanup -- camera locations
+# and department ownership are sensitive registry data, unauthenticated read access
+# was a real gap. list_cameras also now enforces role-based department scoping
+# (frontend.md §3.7): an OPERATOR only ever sees their own department's cameras,
+# regardless of what `department` filter they pass; ADMIN is unrestricted.
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Dict, Optional
@@ -14,14 +20,14 @@ import schemas.camera as schemas
 import services.camera_service as camera_service
 from integration.discovery_adapter import SentinelCameraSource
 from integration.ingest_sync import sync_from_ingest_api
-from core.security import require_admin, log_action
+from core.security import require_admin, get_current_user, log_action
 from models.user import User
 
 router = APIRouter()
 
 
 @router.get("/gap-analysis")
-async def gap_analysis(expected_minimum: int = 3, db: Session = Depends(get_db)):
+async def gap_analysis(expected_minimum: int = 3, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Coverage-shortfall report by district x department -- docs/frontend.md §3.1 Row 4
     / §3.7, the Model 1 "gap-analysis report" requirement (docs/prd.md §0.1)."""
     return {"gaps": camera_service.get_gap_analysis(db, expected_minimum)}
@@ -54,31 +60,41 @@ async def list_cameras(
     vms_vendor: Optional[str] = None,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    """Returns safe camera definitions without exposing credentials."""
-    db_cameras = camera_service.list_cameras(db, department, district, protocol_type, vms_vendor, status)
+    """Returns safe camera definitions without exposing credentials. An OPERATOR's
+    department_scope is enforced server-side (see camera_service.list_cameras) --
+    role-based search, not just an optional filter the client could ignore."""
+    scope = user.department_scope if user.role != "ADMIN" else None
+    db_cameras = camera_service.list_cameras(db, department, district, protocol_type, vms_vendor, status, department_scope=scope)
     return {"cameras": db_cameras}
 
 
 @router.get("/{camera_uid}", response_model=schemas.CameraResponse)
-async def get_camera(camera_uid: str, db: Session = Depends(get_db)):
+async def get_camera(camera_uid: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     db_cam = camera_service.get_camera_by_uid(db, camera_uid)
     if not db_cam:
         raise HTTPException(status_code=404, detail="Camera not found")
+    if user.role != "ADMIN" and user.department_scope and db_cam.department != user.department_scope:
+        raise HTTPException(status_code=403, detail="Camera is outside your department scope")
     return db_cam
 
 
 @router.post("/", response_model=schemas.CameraResponse, status_code=201)
-async def create_camera_manual(camera_in: schemas.CameraCreate, db: Session = Depends(get_db)):
+async def create_camera_manual(
+    camera_in: schemas.CameraCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
     """Manual single camera onboarding."""
     existing = camera_service.get_camera_by_uid(db, camera_in.camera_uid)
     if existing:
         raise HTTPException(status_code=409, detail="Camera with this UID already exists")
-    return camera_service.create_camera(db, camera_in)
+    camera = camera_service.create_camera(db, camera_in, onboarding_source="MANUAL")
+    log_action("CAMERA_CREATED", user=user, resource_type="camera", resource_id=camera.camera_uid, db=db)
+    return camera
 
 
 @router.post("/import/csv", response_model=schemas.ImportSummaryResponse)
-async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Bulk import cameras from CSV file."""
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV")
@@ -94,7 +110,7 @@ async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
         total += 1
         try:
             cam_data = SentinelCameraSource.normalize(row)
-            _, is_created = camera_service.upsert_camera(db, cam_data)
+            _, is_created = camera_service.upsert_camera(db, cam_data, onboarding_source="BULK_CSV")
             if is_created:
                 created += 1
             else:
@@ -109,9 +125,9 @@ async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
 
 
 @router.post("/import/json", response_model=schemas.ImportSummaryResponse)
-async def import_json(payload: List[Dict], db: Session = Depends(get_db)):
+async def import_json(payload: List[Dict], db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Bulk import cameras from a JSON array -- also the shape the /api/ingest catalogue
-    sync (docs/backend.md §2, not yet built) would call into once it exists."""
+    sync (integration/ingest_sync.py) calls into."""
     total = len(payload)
     created = duplicates = failed = 0
     errors: List[str] = []
@@ -119,7 +135,7 @@ async def import_json(payload: List[Dict], db: Session = Depends(get_db)):
     for idx, item in enumerate(payload):
         try:
             cam_data = SentinelCameraSource.normalize(item)
-            _, is_created = camera_service.upsert_camera(db, cam_data)
+            _, is_created = camera_service.upsert_camera(db, cam_data, onboarding_source="BULK_JSON")
             if is_created:
                 created += 1
             else:

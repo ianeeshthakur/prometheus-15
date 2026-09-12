@@ -1,13 +1,19 @@
-# Pipeline 1 (camera registry) tests -- docs/backend.md §5/§8/§12.4. Converted from
-# the original live-server script to real pytest (TestClient, no manual `uvicorn` needed).
+# Pipeline 1 (camera registry) tests -- docs/backend.md §5/§8/§12.4/§12.5. Converted
+# from the original live-server script to real pytest (TestClient, no manual
+# `uvicorn` needed). Auth required on every endpoint here as of §12.5's cleanup.
 
 
-def test_list_cameras_empty_ok(client):
+def test_list_cameras_requires_auth(client):
     resp = client.get("/api/cameras/")
+    assert resp.status_code == 401
+
+
+def test_list_cameras_empty_ok(client, auth_headers):
+    resp = client.get("/api/cameras/", headers=auth_headers)
     assert resp.status_code == 200
 
 
-def test_create_camera(client):
+def test_create_camera(client, auth_headers):
     cam_data = {
         "camera_uid": "CAM-TEST-001",
         "name": "Test Camera",
@@ -19,12 +25,14 @@ def test_create_camera(client):
         "status": "ACTIVE",
         "ai_enabled": True,
     }
-    resp = client.post("/api/cameras/", json=cam_data)
+    resp = client.post("/api/cameras/", json=cam_data, headers=auth_headers)
     assert resp.status_code == 201, resp.text
-    assert resp.json()["ai_profile"] == "TRAFFIC"  # default, docs/backend.md §12.3
+    body = resp.json()
+    assert body["ai_profile"] == "TRAFFIC"  # default, docs/backend.md §12.3
+    assert body["onboarding_source"] == "MANUAL"  # docs/backend.md §12.5
 
 
-def test_create_camera_duplicate_conflicts(client):
+def test_create_camera_duplicate_conflicts(client, auth_headers):
     cam_data = {
         "camera_uid": "CAM-TEST-001",  # same UID as test_create_camera
         "name": "Test Camera",
@@ -36,11 +44,11 @@ def test_create_camera_duplicate_conflicts(client):
         "status": "ACTIVE",
         "ai_enabled": True,
     }
-    resp = client.post("/api/cameras/", json=cam_data)
+    resp = client.post("/api/cameras/", json=cam_data, headers=auth_headers)
     assert resp.status_code == 409
 
 
-def test_json_bulk_import(client):
+def test_json_bulk_import(client, auth_headers):
     json_data = [
         {
             "id": "CAM-TEST-002",
@@ -84,7 +92,7 @@ def test_json_bulk_import(client):
             "status": "active",
         },
     ]
-    resp = client.post("/api/cameras/import/json", json=json_data)
+    resp = client.post("/api/cameras/import/json", json=json_data, headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["created"] == 2
@@ -93,8 +101,11 @@ def test_json_bulk_import(client):
     assert "Missing unique camera identifier" in body["errors"][0]
     assert "Invalid protocol_type" in body["errors"][1]
 
+    resp = client.get("/api/cameras/CAM-TEST-002", headers=auth_headers)
+    assert resp.json()["onboarding_source"] == "BULK_JSON"  # docs/backend.md §12.5
 
-def test_json_bulk_import_idempotent(client):
+
+def test_json_bulk_import_idempotent(client, auth_headers):
     json_data = [
         {
             "id": "CAM-TEST-002",
@@ -117,25 +128,28 @@ def test_json_bulk_import_idempotent(client):
             "status": "degraded",
         },
     ]
-    resp = client.post("/api/cameras/import/json", json=json_data)
+    resp = client.post("/api/cameras/import/json", json=json_data, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["duplicates"] == 2
 
 
-def test_csv_bulk_import(client):
+def test_csv_bulk_import(client, auth_headers):
     csv_data = (
         "camera_uid,name,department,district,location,latitude,longitude,vms_vendor,protocol_type,status,ai_enabled\n"
         "CAM-TEST-004,CSV Cam 1,Traffic,Rajkot,Ring Road,22.3039,70.8022,VendorX,RTSP,ACTIVE,true\n"
     )
     files = {"file": ("test.csv", csv_data, "text/csv")}
-    resp = client.post("/api/cameras/import/csv", files=files)
+    resp = client.post("/api/cameras/import/csv", files=files, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["created"] == 1
 
+    resp = client.get("/api/cameras/CAM-TEST-004", headers=auth_headers)
+    assert resp.json()["onboarding_source"] == "BULK_CSV"  # docs/backend.md §12.5
 
-def test_gap_analysis_reflects_real_registry(client):
+
+def test_gap_analysis_reflects_real_registry(client, auth_headers):
     """docs/backend.md §12.4 -- real query, not mock data."""
-    resp = client.get("/api/cameras/gap-analysis")
+    resp = client.get("/api/cameras/gap-analysis", headers=auth_headers)
     assert resp.status_code == 200
     gaps = resp.json()["gaps"]
     # Every district/department combo above has well under the expected_minimum=3
@@ -155,3 +169,33 @@ def test_sync_ingest_fails_clearly_when_unconfigured(client, auth_headers):
     resp = client.post("/api/cameras/sync-ingest", headers=auth_headers)
     assert resp.status_code == 400
     assert "INGEST_API_BASE_URL" in resp.json()["detail"]
+
+
+def test_operator_department_scope_enforced(client):
+    """docs/frontend.md §3.7's "role-based search" requirement, closed §12.5 -- an
+    OPERATOR only ever sees their own department's cameras, server-side, regardless
+    of what `department` filter they pass."""
+    admin_login = client.post("/api/auth/login", json={"username": "admin", "password": "test-admin-pass"})
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+    resp = client.post(
+        "/api/auth/users",
+        json={"username": "operator-traffic", "password": "op-pass-123", "role": "OPERATOR", "department_scope": "Traffic"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 201, resp.text
+
+    op_login = client.post("/api/auth/login", json={"username": "operator-traffic", "password": "op-pass-123"})
+    assert op_login.status_code == 200
+    op_headers = {"Authorization": f"Bearer {op_login.json()['access_token']}"}
+
+    # Ask for "Security" cameras explicitly -- scope must override the request, not just default.
+    resp = client.get("/api/cameras/", params={"department": "Security"}, headers=op_headers)
+    assert resp.status_code == 200
+    cams = resp.json()["cameras"]
+    assert len(cams) > 0
+    assert all(c["department"] == "Traffic" for c in cams)
+
+    # A camera outside the operator's scope is a 403 on direct lookup, not a 200 leak.
+    resp = client.get("/api/cameras/CAM-TEST-002", headers=op_headers)  # department=Security
+    assert resp.status_code == 403

@@ -4,7 +4,7 @@
 import asyncio
 
 
-def test_anomaly_event_creates_alert_with_mapped_severity(client):
+def test_anomaly_event_creates_alert_with_mapped_severity(client, auth_headers):
     """services/alert_service.py's ANOMALY_SEVERITY_MAP: WRONG_WAY -> CRITICAL."""
     from intelligence.alert_engine import alert_engine
     from intelligence.events import NormalizedEvent
@@ -20,7 +20,7 @@ def test_anomaly_event_creates_alert_with_mapped_severity(client):
         "status": "ACTIVE",
         "ai_enabled": True,
     }
-    resp = client.post("/api/cameras/", json=cam)
+    resp = client.post("/api/cameras/", json=cam, headers=auth_headers)
     assert resp.status_code in (201, 409)
 
     async def feed():
