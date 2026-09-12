@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+build/
+.env
+.env.local
+*.db
+__pycache__/
+*.pyc
+venv/
+.venv/
+backend/venv/
+*.log
+.DS_Store
+

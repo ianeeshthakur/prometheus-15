@@ -1,0 +1,1 @@
+# fastapi, uvicorn, sqlalchemy, python-dotenv, opencv-python-headless, pydantic -- pin versions once decided.

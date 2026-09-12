@@ -1,0 +1,1 @@
+// Route: /investigations -- case list.

@@ -1,0 +1,14 @@
+{
+  "name": "gvista",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TODO: fresh-start scaffold -- fill in scripts/deps once the rebuilt frontend has real content.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
