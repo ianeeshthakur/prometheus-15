@@ -18,10 +18,18 @@ CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.
 
 # Auth (docs/backend.md §7/§12.4). SECRET_KEY MUST be overridden via env before any real
 # deployment -- this default is fine for local dev only and is deliberately obvious so
-# nobody mistakes it for a real secret.
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me-before-any-real-use")
+# nobody mistakes it for a real secret. main.py's lifespan refuses to start in
+# APP_MODE=LIVE if SECRET_KEY still equals this default (docs/backend.md §12.6 fix) --
+# exposed as a named constant here specifically so that check can compare against it
+# without duplicating the literal.
+DEFAULT_INSECURE_SECRET_KEY = "dev-insecure-secret-change-me-before-any-real-use"
+SECRET_KEY = os.environ.get("SECRET_KEY", DEFAULT_INSECURE_SECRET_KEY)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = int(os.environ.get("JWT_EXPIRE_MINUTES", "480"))  # 8h shift
+
+# Rate limiting on /api/auth/login (core/rate_limit.py) -- docs/backend.md §7.1/§12.6.
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS = int(os.environ.get("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", "5"))
+LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))  # 5 minutes
 
 # Bootstrap admin, created on first startup only if the users table is empty (see
 # main.py's lifespan) -- there is no other way to get the first ADMIN account on a

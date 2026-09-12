@@ -5,6 +5,7 @@ from enum import Enum
 from datetime import datetime
 
 from ai.schemas import AIProfile
+from core.sanitize import strip_html_tags
 
 
 class ProtocolType(str, Enum):
@@ -60,6 +61,13 @@ class CameraBase(BaseModel):
         if v is not None and (v < -180 or v > 180):
             raise ValueError("Longitude must be between -180 and 180")
         return v
+
+    @field_validator("name", "location", "department", "district", "vms_vendor")
+    @classmethod
+    def sanitize_free_text(cls, v):
+        # docs/backend.md §7.1/§12.6 -- strip any HTML/script markup at the input
+        # boundary, see core/sanitize.py's module docstring for why strip-not-escape.
+        return strip_html_tags(v)
 
 
 class CameraCreate(CameraBase):

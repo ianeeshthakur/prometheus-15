@@ -1,12 +1,13 @@
 # Pydantic schemas for investigations/timeline/evidence -- docs/frontend.md §3.5,
 # docs/backend.md §12.4.
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional, List
 from enum import Enum
 from datetime import datetime
 
 from schemas.event import CameraEventResponse
 from schemas.alert import AlertResponse
+from core.sanitize import strip_html_tags
 
 
 class InvestigationStatus(str, Enum):
@@ -25,6 +26,12 @@ class InvestigationCreate(BaseModel):
     entity: str
     priority: InvestigationPriority = InvestigationPriority.MEDIUM
     assigned_officer: Optional[str] = None
+
+    @field_validator("title", "entity", "assigned_officer")
+    @classmethod
+    def sanitize_free_text(cls, v):
+        # docs/backend.md §7.1/§12.6 -- see core/sanitize.py's module docstring.
+        return strip_html_tags(v) if v else v
 
 
 class InvestigationResponse(BaseModel):
@@ -51,6 +58,12 @@ class EvidenceCreate(BaseModel):
     camera_uid: Optional[str] = None
     confidence: Optional[float] = None
     reference_event_id: Optional[int] = None
+
+    @field_validator("description")
+    @classmethod
+    def sanitize_free_text(cls, v):
+        # docs/backend.md §7.1/§12.6 -- see core/sanitize.py's module docstring.
+        return strip_html_tags(v) if v else v
 
 
 class EvidenceResponse(BaseModel):

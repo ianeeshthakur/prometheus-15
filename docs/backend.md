@@ -245,14 +245,14 @@ What this section protects against, what it explicitly doesn't yet, and why -- o
 | Untraceable privileged actions (who acknowledged this alert, who created this camera) | Audit log on every write + individual-record views | Done |
 | Password compromise via a broken hashing library | `bcrypt` used directly (not `passlib`, which was silently mis-hashing under a version mismatch — caught by testing, §12.4) | Done |
 | False-positive watchlist alerts from an untuned fuzzy-match threshold | Fuzzy matching built but OFF by default; needs real OCR error-rate data to enable responsibly | Deliberately not done |
-| A compromised/weak `SECRET_KEY` in production | Loud, obviously-a-placeholder default; **not enforced** — nothing stops someone deploying with the default | **Open** — consider failing startup if `SECRET_KEY` is still the default and `APP_MODE=LIVE` |
-| Brute-forcing `/api/auth/login` | None — no rate limiting exists anywhere in this backend | **Open** |
-| A leaked JWT being usable until natural expiry (8h default) | None — no revocation/blocklist exists; `JWT_EXPIRE_MINUTES` is the only bound | **Open** |
-| SQL injection | SQLAlchemy's query builder is used everywhere (no raw string-interpolated SQL) | Believed safe, not formally audited |
-| A malicious CSV/JSON camera-import payload | `SentinelCameraSource.normalize()` validates every field and reports per-row errors; doesn't sanitize free-text fields (`name`, `location`, etc.) against e.g. stored-XSS if ever rendered unescaped by a future frontend | Partially done — revisit once the frontend actually renders these fields |
+| A compromised/weak `SECRET_KEY` in production | `main._refuse_insecure_live_deployment()` fails startup with a clear `RuntimeError` if `APP_MODE=LIVE` and `SECRET_KEY` is still the default — verified by actually booting the server both ways | Done, tested (§12.6) |
+| Brute-forcing `/api/auth/login` | `core/rate_limit.py`, per-IP and per-username, wired into `routers/auth.py`. In-process only — a documented limitation once this runs as multiple instances, not a fix that scales past one | Done, tested (§12.6) |
+| A leaked JWT being usable until natural expiry (8h default) | `models/user.RevokedToken` + `POST /api/auth/logout`; `get_current_user` checks revocation on every request | Done, tested (§12.6) |
+| SQL injection | SQLAlchemy's query builder is used everywhere — audited by grepping all of `backend/` for raw `execute()`/`text()`/f-string-built queries; zero hits | Audited, clean (§12.6) |
+| A malicious CSV/JSON camera-import payload / stored XSS via free-text fields | `SentinelCameraSource.normalize()` validates every field; `core/sanitize.py`'s `strip_html_tags()` strips markup from every free-text field at the input boundary (camera name/location, watchlist description, investigation title, evidence description, facial-recognition authorization reason) | Done, tested against real payloads (§12.6) |
 | Mock government-lookup responses being mistaken for real data | Every response carries `"mock": true` plus an explanatory message | Done |
 
-Three items above are genuinely open and worth flagging before any deployment beyond a hackathon demo: **rate limiting**, **token revocation**, and **failing loud if `SECRET_KEY` is still the default in a `LIVE` deployment**. None were in scope for this pass; none should be mistaken for "handled."
+All five items that were open in this table as of the previous pass are now closed and tested (§12.6). What's still genuinely open in this project overall is §12.7's three items — none of them backend engineering, all of them blocked on external data (real OCR error rates, a real re-identification model, the hackathon's real `/api/ingest` payload) that nobody here can produce by writing more code.
 
 ## 8. Testing strategy
 
@@ -263,14 +263,16 @@ cd backend
 .venv\Scripts\python -m pytest -v
 ```
 
-28 tests, all passing as of 2026-09-12. One known limitation: the DB fixture is session-scoped (one shared DB for the whole run), not per-test-isolated — a true per-test DB would need `db/database.py`'s module-level `engine`/`SessionLocal` singletons restructured, which wasn't worth it for this pass. Test functions use distinct identifiers per concern (the same convention the original standalone scripts used) specifically so they can safely share one DB.
+48 tests, all passing as of 2026-09-13. DB isolation is at the module (test-file) level, not per-function — an autouse fixture wipes operational tables between files (`tests/conftest.py`), closing the real risk (cross-file contamination) without the full per-function `db/database.py` engine/session restructuring a true per-test DB would need. Verified order-independent by running file subsets out of default collection order.
 
-- `tests/test_cameras.py` — CRUD, duplicate rejection, CSV/JSON bulk import, gap-analysis, ingest-sync auth/error-handling.
-- `tests/test_adapters.py` — factory resolution across HLS/ONVIF/Vendor SDK, 404 on missing camera.
+- `tests/test_cameras.py` — CRUD, duplicate rejection, CSV/JSON bulk import, gap-analysis, ingest-sync auth/error-handling, onboarding-source tracking, operator department-scope enforcement.
+- `tests/test_adapters.py` — factory resolution across HLS/ONVIF/Vendor SDK, 404 on missing camera, auth requirement.
 - `tests/test_ai.py` — orchestrator profile gating, invalid-profile 422.
-- `tests/test_watchlists.py` — real DB-backed matching end-to-end, including `match_count` incrementing.
+- `tests/test_watchlists.py` — real DB-backed matching end-to-end including `match_count` incrementing, plus the fuzzy-matching algorithm's correctness and its off-by-default safety property.
 - `tests/test_alerts.py` — the severity rubric specifically: anomaly type→severity mapping (including the unmapped-type fallback), and that routine unmatched detections don't become alerts.
 - `tests/test_investigations.py` — the full auth → watchlist match → persisted alert → acknowledge → open investigation → timeline → map trace → evidence flow, in one test since each step depends on the last.
+- `tests/test_reid_scaffolding.py` — the re-identification interface plumbing (extract → compare), not real appearance matching (the mock provider deliberately can't do that).
+- `tests/test_security_hardening.py` — rate limiting (unit + end-to-end), JWT logout/revocation, the `SECRET_KEY`/`LIVE`-mode startup check, and XSS sanitization against real payloads.
 
 Minimum bar before the hackathon-day live test: the Investigations map-trace flow has an end-to-end test against at least one real ingest-API camera, not only synthetic data — this is the graded functional test, it cannot be mock-only. **`tests/test_investigations.py` proves the shape works end-to-end against synthetic data (real DB writes, real joins, real timestamps) — the literal "against a real ingest-API camera" part is still blocked on organizers publishing a live host** (`INGEST_API_BASE_URL` unset, `core/config.py`); nothing else is missing to run it for real once that exists.
 
@@ -355,7 +357,7 @@ Every item that was in this section as "not built" is now built, with one delibe
 - [x] Facial-recognition authorization gate + toggle (§7)
 - [x] Mock VAHAN/SARTHI/eGujCop/AFIS/NAFIS adapters (§7)
 - [x] `video/frame_sampler.py`, wired into `routers/streams.py` (§5 Pipeline 2)
-- [x] Converted `tests/*.py` to real pytest — 28 tests passing (§8)
+- [x] Converted `tests/*.py` to real pytest — 28 tests passing at the time (48 as of §12.6, §8)
 - [x] End-to-end vehicle-trace test — done against synthetic data (`tests/test_investigations.py`); the "real ingest-API camera" part is blocked on external access, not on anything left to build here (§8)
 
 Two real bugs were caught and fixed while building this, both from writing an actual test rather than trusting the code: a `passlib`/modern-`bcrypt` incompatibility that broke password hashing entirely (switched to `bcrypt` directly, see `requirements.txt`'s comment), and a `DetachedInstanceError` from reading ORM attributes after the session that fetched them had committed and closed (`intelligence/alert_engine.py` — fixed by snapshotting needed fields before the commit, same fix as the earlier §12.3 watchlist bug, so this pattern is now worth watching for elsewhere).
@@ -374,13 +376,18 @@ Every item from this section's previous pass is now closed, two of them as delib
 - [x] **Per-test database isolation** — not the full per-function rewrite (still not worth the `db/database.py` restructuring it would need), but a real fix for the actual risk: an autouse, module-scoped fixture wipes every operational table between test *files*, eliminating cross-file contamination. Verified by running a subset of files in a different order than pytest's default collection order (`tests/conftest.py`).
 - [x] **Single consolidated threat model** — §7.1, table format, including the three items it surfaced as genuinely still open (see below).
 
-### 12.6 Remaining known gaps (genuinely open, not glossed over)
+### 12.6 Closed (2026-09-13 — verified against 48 passing pytest tests)
+
+Five of the eight items from this section's previous pass are now closed, real and tested. The other three stay open on purpose — they're blocked on external data/models nobody here has, and forcing a fix would mean guessing, which is exactly what got avoided everywhere else in this project.
+
+- [x] **Rate limiting on `/api/auth/login`** — `core/rate_limit.py`'s `InMemoryRateLimiter`, two instances (per-IP and per-username, either tripping blocks the attempt), wired into `routers/auth.py`. Explicitly in-process, not Redis-backed — documented limitation, not an oversight, since Redis is already deferred to Phase 2+ (§9). A successful login resets both limiters for that identity. Tested end-to-end (`tests/test_security_hardening.py`) *and* as a unit test of the limiter class itself, specifically so the HTTP-level test can't leak rate-limit state into other tests sharing the same in-process limiter — caught this for real: an earlier version of the logout test below did leak shared session state and broke five other tests, fixed by using a dedicated token instead of the shared one.
+- [x] **JWT revocation/blocklist** — `models/user.RevokedToken` (keyed by the token's `jti` claim, now issued on every token), `core/security.revoke_token()`/`is_token_revoked()`, `POST /api/auth/logout`. `get_current_user` checks revocation on every request. Tested that a revoked token is rejected immediately, not just eventually expires.
+- [x] **Startup check for a default `SECRET_KEY` in `LIVE`** — `main._refuse_insecure_live_deployment()`, called first thing in the lifespan. **Verified for real, not just unit-tested**: booted the actual server with `APP_MODE=LIVE` and the default key and watched it refuse to start with a clear `RuntimeError`; booted it again with a real key and confirmed it comes up fine. `DEMO` mode (this backend's actual current deployment mode) is unaffected either way.
+- [x] **SQL-injection audit** — actually audited, not just asserted safe: grepped all of `backend/` for raw `execute()`/`text()`/f-string-built queries/`.filter(f"...")`. Zero hits — every query goes through SQLAlchemy's parameterized query builder. Downgraded from "believed safe" to "audited, clean."
+- [x] **Free-text XSS sanitization** — `core/sanitize.py`'s `strip_html_tags()` (strips markup at the input boundary rather than HTML-escaping it — see that module's docstring for why storing escaped entities in a JSON API would be actively wrong), applied via Pydantic `field_validator`s on `Camera` (name/location/department/district/vms_vendor), `WatchlistEntry` (identifier/description/source/added_by), `Investigation`/`Evidence` (title/entity/assigned_officer/description), and the facial-recognition authorization `reason`. Tested against real `<script>`/`<img onerror>`/`<svg onload>` payloads through the actual create endpoints.
+
+### 12.7 Remaining known gaps (genuinely open, not glossed over)
 
 - [ ] `/api/ingest` field-mapping in `integration/ingest_sync.py` — a best-effort guess at undocumented parts of the payload shape, permanently unverifiable until organizers publish a real endpoint; nothing to build here, only to adjust once that happens
 - [ ] Fuzzy watchlist matching's distance threshold — needs real OCR error-rate data (ai_pipelines.md §6/§7), same blocker as above in spirit
 - [ ] Real appearance-based re-identification model — needs real training data/a real model, not just the interface
-- [ ] Rate limiting on `/api/auth/login` (§7.1)
-- [ ] JWT revocation/blocklist (§7.1)
-- [ ] No startup check that fails loudly if `SECRET_KEY` is still the default in a `LIVE` deployment (§7.1)
-- [ ] SQL-injection posture believed safe (SQLAlchemy's query builder used throughout) but not formally audited (§7.1)
-- [ ] Free-text camera fields (`name`, `location`, etc.) aren't sanitized against stored-XSS if a future frontend ever renders them unescaped (§7.1)

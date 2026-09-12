@@ -1,8 +1,10 @@
 # Pydantic schemas for watchlist entries/matches -- docs/frontend.md §3.4.
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional
 from enum import Enum
 from datetime import datetime
+
+from core.sanitize import strip_html_tags
 
 
 class WatchlistCategory(str, Enum):
@@ -26,6 +28,12 @@ class WatchlistEntryBase(BaseModel):
     source: Optional[str] = None
     added_by: Optional[str] = None
     active: bool = True
+
+    @field_validator("identifier", "description", "source", "added_by")
+    @classmethod
+    def sanitize_free_text(cls, v):
+        # docs/backend.md §7.1/§12.6 -- see core/sanitize.py's module docstring.
+        return strip_html_tags(v) if v else v
 
 
 class WatchlistEntryCreate(WatchlistEntryBase):

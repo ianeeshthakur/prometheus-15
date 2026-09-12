@@ -41,3 +41,18 @@ class AuditLogEntry(Base):
     detail = Column(String, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class RevokedToken(Base):
+    """JWT revocation/blocklist -- docs/backend.md §7.1/§12.6. A JWT is normally valid
+    until it naturally expires (JWT_EXPIRE_MINUTES); this table lets a specific token
+    be invalidated early (logout, a compromised token) by its `jti` claim.
+    core/security.get_current_user() checks this on every request. Expired rows are
+    safe to delete (a naturally-expired token needs no entry to be rejected) -- see
+    core/security.purge_expired_revocations()."""
+
+    __tablename__ = "revoked_tokens"
+
+    jti = Column(String, primary_key=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    revoked_at = Column(DateTime(timezone=True), server_default=func.now())

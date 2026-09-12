@@ -9,7 +9,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from core.config import CORS_ORIGINS, HLS_OUTPUT_DIR, ADMIN_BOOTSTRAP_USERNAME, ADMIN_BOOTSTRAP_PASSWORD
+from core.config import (
+    CORS_ORIGINS,
+    HLS_OUTPUT_DIR,
+    ADMIN_BOOTSTRAP_USERNAME,
+    ADMIN_BOOTSTRAP_PASSWORD,
+    APP_MODE,
+    SECRET_KEY,
+    DEFAULT_INSECURE_SECRET_KEY,
+)
 from core.logging import configure_logging
 from db.base import Base
 from db.database import engine, SessionLocal
@@ -53,8 +61,21 @@ def _bootstrap_admin_user():
         db.close()
 
 
+def _refuse_insecure_live_deployment():
+    """Fails loudly -- docs/backend.md §7.1/§12.6 -- instead of silently running a
+    LIVE deployment on the obviously-a-placeholder default SECRET_KEY. DEMO mode is
+    unaffected; this only blocks APP_MODE=LIVE specifically."""
+    if APP_MODE == "LIVE" and SECRET_KEY == DEFAULT_INSECURE_SECRET_KEY:
+        raise RuntimeError(
+            "Refusing to start: APP_MODE=LIVE but SECRET_KEY is still the default "
+            "placeholder. Set a real SECRET_KEY in the environment before running in "
+            "LIVE mode (docs/backend.md §7.1)."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _refuse_insecure_live_deployment()
     logger.info("Starting G-VISTA backend")
 
     try:
