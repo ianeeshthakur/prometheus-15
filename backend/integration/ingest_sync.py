@@ -1,28 +1,45 @@
-# Syncs the camera registry from the hackathon's real /api/ingest catalogue --
-# docs/backend.md §2/§12.4/§12.7. Previously nothing called this endpoint at all.
+# Syncs the camera registry from a real ingest catalogue -- docs/backend.md
+# §2/§12.4/§12.7. Previously nothing called this endpoint at all.
 #
-# UNVERIFIED against the real hackathon infrastructure: INGEST_API_BASE_URL is unset
-# by default (core/config.py) since organizers haven't published a live host as of
-# this writing. This will raise a clear, honest error rather than silently doing
-# nothing or fabricating cameras when unconfigured -- see sync_from_ingest_api()'s
-# ValueError below.
+# Two real catalogue shapes are now supported, since two different real things have
+# turned up so far and they aren't the same contract:
+#   1. The documented official-portal contract: GET {INGEST_API_BASE_URL}/api/ingest.
+#      Still unverified -- no live host published for this one as of this writing.
+#   2. A real hackathon test rig at corp8.cloud (found 2026-09-13): a flat GET at a
+#      fixed URL (INGEST_CATALOGUE_URL, e.g. https://cctv.corp8.cloud/cameras.json),
+#      not a path under a configurable base. RTSP access on this rig needs a
+#      registered email+password embedded in the connection URL -- see
+#      _build_authenticated_rtsp_url() below. Both fail clearly and honestly (see
+#      _fetch_catalogue()'s ValueError) rather than silently doing nothing or
+#      fabricating cameras when unconfigured.
 #
-# What §12.7's cleanup pass actually changed here, since the real payload shape is
-# still unknown: made the guess CHEAP TO FIX once it's wrong, instead of pretending
-# it's already right.
+# What §12.7's cleanup pass changed here, since even the corp8.cloud payload's exact
+# field names are still unobserved from inside this sandbox (outbound requests to it
+# are blocked by this environment's own safety layer -- see docs/backend.md §12.7):
+# made the guess CHEAP TO FIX once it's wrong, instead of pretending it's already right.
 #   1. preview_ingest_catalogue() -- fetches and returns the RAW, unmodified response
 #      (no normalization, no DB writes) so a human can inspect the real field names the
-#      moment a host is configured, before trusting sync_from_ingest_api() with writes.
+#      moment this runs somewhere that can actually reach the host, before trusting
+#      sync_from_ingest_api() with writes.
 #   2. INGEST_FIELD_ALIASES (core/config.py) -- a JSON env var mapping the catalogue's
 #      real key names to CameraCreate's field names. If the real payload uses e.g.
 #      "vendor" instead of "vms_vendor", that's now a config change (set the env var
 #      and restart), not a code change.
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+from urllib.parse import quote
 import requests
 from sqlalchemy.orm import Session
 
-from core.config import INGEST_API_BASE_URL, INGEST_FIELD_ALIASES
+from core.config import (
+    INGEST_API_BASE_URL,
+    INGEST_CATALOGUE_URL,
+    INGEST_FIELD_ALIASES,
+    INGEST_STREAM_EMAIL,
+    INGEST_STREAM_PASSWORD,
+    INGEST_RTSP_HOST,
+    INGEST_RTSP_PORT,
+)
 from integration.discovery_adapter import SentinelCameraSource
 from services import camera_service
 from schemas.camera import ImportSummaryResponse
@@ -31,16 +48,35 @@ logger = logging.getLogger(__name__)
 
 
 def _fetch_catalogue(timeout_seconds: int = 15) -> Any:
-    if not INGEST_API_BASE_URL:
+    if INGEST_CATALOGUE_URL:
+        url = INGEST_CATALOGUE_URL
+    elif INGEST_API_BASE_URL:
+        url = f"{INGEST_API_BASE_URL.rstrip('/')}/api/ingest"
+    else:
         raise ValueError(
-            "INGEST_API_BASE_URL is not configured -- set it in .env once the hackathon "
-            "publishes a live host for the simulated feed catalogue (docs/backend.md §2)."
+            "Neither INGEST_CATALOGUE_URL nor INGEST_API_BASE_URL is configured -- set "
+            "one in .env once a live catalogue host is reachable (docs/backend.md §2/§12.7)."
         )
-    url = f"{INGEST_API_BASE_URL.rstrip('/')}/api/ingest"
     logger.info(f"Fetching camera catalogue from {url}")
     resp = requests.get(url, timeout=timeout_seconds)
     resp.raise_for_status()
     return resp.json()
+
+
+def _build_authenticated_rtsp_url(camera_id: str) -> Optional[str]:
+    """Synthesizes the real, credentialed RTSP URL for one camera on the corp8.cloud
+    rig (docs/backend.md §12.7): rtsp://<email>:<password>@<host>:<port>/stream/<id>.
+    Returns None -- not a guess -- when the stream credentials/host aren't configured,
+    so a camera missing this config fails loudly downstream (no rtsp_url to connect
+    with) rather than silently getting a URL that can't possibly work. Email/password
+    are percent-encoded (`quote(..., safe="")`) since userinfo can't contain a raw
+    "@" or other reserved characters -- the real doc's own example shows this for the
+    email (`%40` for `@`)."""
+    if not (INGEST_STREAM_EMAIL and INGEST_STREAM_PASSWORD and INGEST_RTSP_HOST):
+        return None
+    email = quote(INGEST_STREAM_EMAIL, safe="")
+    password = quote(INGEST_STREAM_PASSWORD, safe="")
+    return f"rtsp://{email}:{password}@{INGEST_RTSP_HOST}:{INGEST_RTSP_PORT}/stream/{camera_id}"
 
 
 def preview_ingest_catalogue(timeout_seconds: int = 15) -> Any:
@@ -113,4 +149,15 @@ def _map_ingest_fields(item: Dict) -> Dict:
     mapped.setdefault("status", "ACTIVE" if item.get("live_status", True) else "OFFLINE")
     if "rtsp_url" not in mapped and "rtsp" in item:
         mapped["rtsp_url"] = item["rtsp"]
+
+    # The corp8.cloud rig's catalogue almost certainly doesn't hand back a working
+    # authenticated URL directly (docs/backend.md §12.7) -- synthesize one from the
+    # configured stream credentials if the payload didn't already provide one.
+    if not mapped.get("rtsp_url"):
+        camera_id = mapped.get("camera_uid") or mapped.get("id") or mapped.get("camera_id")
+        if camera_id:
+            synthesized = _build_authenticated_rtsp_url(str(camera_id))
+            if synthesized:
+                mapped["rtsp_url"] = synthesized
+
     return mapped

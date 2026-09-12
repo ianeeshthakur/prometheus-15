@@ -220,6 +220,106 @@ def test_ingest_field_aliases_do_not_override_existing_target_key(monkeypatch):
     assert mapped["vms_vendor"] == "CorrectVendor"
 
 
+# --- corp8.cloud rig integration -- docs/backend.md §12.7 --------------------------
+# A real (non-official-portal) hackathon test rig found 2026-09-13. Its catalogue is a
+# flat URL, not a path under INGEST_API_BASE_URL, and RTSP needs credentials
+# synthesized into the connection URL rather than trusting the catalogue to hand back
+# a working authenticated one. These are unit tests of the synthesis logic only --
+# no network call, and no real credential appears in this file or any committed file.
+
+
+def test_catalogue_url_takes_priority_over_api_base_url(monkeypatch):
+    import integration.ingest_sync as ingest_sync
+
+    monkeypatch.setattr(ingest_sync, "INGEST_CATALOGUE_URL", "https://cctv.example.test/cameras.json")
+    monkeypatch.setattr(ingest_sync, "INGEST_API_BASE_URL", "https://official-portal.example.test")
+
+    captured = {}
+
+    def fake_get(url, timeout):
+        captured["url"] = url
+
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return []
+
+        return _Resp()
+
+    monkeypatch.setattr(ingest_sync.requests, "get", fake_get)
+    ingest_sync._fetch_catalogue()
+    assert captured["url"] == "https://cctv.example.test/cameras.json"
+
+
+def test_fetch_catalogue_fails_clearly_when_neither_url_configured(monkeypatch):
+    import integration.ingest_sync as ingest_sync
+
+    monkeypatch.setattr(ingest_sync, "INGEST_CATALOGUE_URL", "")
+    monkeypatch.setattr(ingest_sync, "INGEST_API_BASE_URL", "")
+    try:
+        ingest_sync._fetch_catalogue()
+        assert False, "expected ValueError"
+    except ValueError as e:
+        assert "INGEST_CATALOGUE_URL" in str(e)
+        assert "INGEST_API_BASE_URL" in str(e)
+
+
+def test_authenticated_rtsp_url_synthesized_when_credentials_configured(monkeypatch):
+    import integration.ingest_sync as ingest_sync
+
+    monkeypatch.setattr(ingest_sync, "INGEST_STREAM_EMAIL", "tester@example.test")
+    monkeypatch.setattr(ingest_sync, "INGEST_STREAM_PASSWORD", "P@ss:word/1")
+    monkeypatch.setattr(ingest_sync, "INGEST_RTSP_HOST", "198.51.100.7")
+    monkeypatch.setattr(ingest_sync, "INGEST_RTSP_PORT", "8554")
+
+    url = ingest_sync._build_authenticated_rtsp_url("cam21")
+    assert url is not None
+    # The "@" separating userinfo from host must be the real one, not one from inside
+    # the (percent-encoded) email or password -- otherwise urlparse-style consumers
+    # would split the URL in the wrong place.
+    assert url.count("@") == 1
+    assert url == "rtsp://tester%40example.test:P%40ss%3Aword%2F1@198.51.100.7:8554/stream/cam21"
+
+
+def test_authenticated_rtsp_url_none_when_credentials_not_configured(monkeypatch):
+    import integration.ingest_sync as ingest_sync
+
+    monkeypatch.setattr(ingest_sync, "INGEST_STREAM_EMAIL", "")
+    monkeypatch.setattr(ingest_sync, "INGEST_STREAM_PASSWORD", "")
+    monkeypatch.setattr(ingest_sync, "INGEST_RTSP_HOST", "")
+    assert ingest_sync._build_authenticated_rtsp_url("cam21") is None
+
+
+def test_map_ingest_fields_synthesizes_rtsp_url_when_catalogue_omits_it(monkeypatch):
+    """The corp8.cloud catalogue almost certainly can't hand back a working
+    authenticated URL in a public response -- confirms _map_ingest_fields fills the
+    gap from configured credentials instead of leaving rtsp_url unusable."""
+    import integration.ingest_sync as ingest_sync
+
+    monkeypatch.setattr(ingest_sync, "INGEST_STREAM_EMAIL", "tester@example.test")
+    monkeypatch.setattr(ingest_sync, "INGEST_STREAM_PASSWORD", "secret123")
+    monkeypatch.setattr(ingest_sync, "INGEST_RTSP_HOST", "198.51.100.7")
+    monkeypatch.setattr(ingest_sync, "INGEST_RTSP_PORT", "8554")
+
+    raw_item = {"id": "cam21", "name": "Camera 21", "district": "Ahmedabad", "location": "Test Road"}
+    mapped = ingest_sync._map_ingest_fields(raw_item)
+    assert mapped["rtsp_url"] == "rtsp://tester%40example.test:secret123@198.51.100.7:8554/stream/cam21"
+
+
+def test_map_ingest_fields_does_not_override_an_rtsp_url_the_catalogue_already_gave(monkeypatch):
+    import integration.ingest_sync as ingest_sync
+
+    monkeypatch.setattr(ingest_sync, "INGEST_STREAM_EMAIL", "tester@example.test")
+    monkeypatch.setattr(ingest_sync, "INGEST_STREAM_PASSWORD", "secret123")
+    monkeypatch.setattr(ingest_sync, "INGEST_RTSP_HOST", "198.51.100.7")
+
+    raw_item = {"id": "cam21", "rtsp_url": "rtsp://already-provided/stream/cam21"}
+    mapped = ingest_sync._map_ingest_fields(raw_item)
+    assert mapped["rtsp_url"] == "rtsp://already-provided/stream/cam21"
+
+
 def test_operator_department_scope_enforced(client):
     """docs/frontend.md §3.7's "role-based search" requirement, closed §12.5 -- an
     OPERATOR only ever sees their own department's cameras, server-side, regardless

@@ -23,6 +23,19 @@ _TEST_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH}"
 os.environ["ADMIN_BOOTSTRAP_PASSWORD"] = "test-admin-pass"
 
+# Force these empty regardless of a developer's local .env (docs/backend.md §12.7.1) --
+# without this, load_dotenv() (core/config.py) would pull in a real INGEST_CATALOGUE_URL/
+# credential set from .env and silently break every "fails clearly when unconfigured"
+# test below into attempting a real network call instead.
+for _ingest_var in (
+    "INGEST_API_BASE_URL",
+    "INGEST_CATALOGUE_URL",
+    "INGEST_STREAM_EMAIL",
+    "INGEST_STREAM_PASSWORD",
+    "INGEST_RTSP_HOST",
+):
+    os.environ[_ingest_var] = ""
+
 if os.path.exists(_TEST_DB_PATH):
     os.remove(_TEST_DB_PATH)
 

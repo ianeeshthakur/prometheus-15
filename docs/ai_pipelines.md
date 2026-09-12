@@ -103,6 +103,21 @@ Where the vehicle/plate/person/OCR/re-identification models themselves come from
 
 This table is a starting point for licensing/access verification, not a final commitment — confirm each dataset's license permits this use before fine-tuning against it. The onboarding loop once real data lands is §6.3; the same profile → label → fine-tune → validate → report loop applies to these pretrained sources too.
 
+### 7.1 Theft/shoplifting candidates found 2026-09-13 (suspicious-activity row, not yet downloaded or evaluated)
+
+Real, specific links for the "Suspicious-activity / anomaly cues" row above, found by the team rather than sourced from the prior `prometheus-1` research. Listed here, not integrated: nothing has been downloaded, licensed, labeled, or evaluated against the mock pipeline yet — that's §6's onboarding loop, unstarted for these. Important scope note: these are theft/shoplifting **behavior classification** datasets, which fit `AnomalyDetector` (§2's open-string `anomaly_type`, e.g. a `SHOPLIFTING`/`THEFT` type) — they do **not** help either of backend.md §12.7's still-open items (fuzzy watchlist matching needs labeled *OCR reading vs. ground-truth plate* pairs; re-identification needs a labeled *same-person/vehicle-across-cameras* dataset like Market-1501 above). Don't conflate the two when scoping follow-up work.
+
+| Resource | Type | Relevance |
+|---|---|---|
+| [Theft Detection Dataset (Kaggle, prachisury11)](https://www.kaggle.com/datasets/prachisury11/theft-detection-dataset) | Labeled video/frames | Direct candidate for a `SHOPLIFTING`/`THEFT` anomaly type — license unverified |
+| [DCSASS Dataset (Kaggle, mateohervas)](https://www.kaggle.com/datasets/mateohervas/dcsass-dataset) | Multi-category surveillance anomaly clips | Broader than theft alone (DCSASS = multiple anomaly categories) — could seed several `anomaly_type` values at once, not just theft |
+| [Suspicious Shoplifting Activity Detection (Kaggle, sgsparsh06)](https://www.kaggle.com/datasets/sgsparsh06/suspicious-shoplifting-activity-detection) | Labeled shoplifting clips | Same category as the first row — cross-check for overlap/duplication before using both |
+| [Kudosware Theft Detection Model (Kaggle notebook, desolationofsmaug)](https://www.kaggle.com/code/desolationofsmaug/kudosware-theft-detection-model) | Reference notebook (existing model, not a dataset) | A worked baseline approach to read before designing this project's own fine-tuning run — not something to import directly, since its training data/license/eval methodology need the same verification as everything else in this table |
+| [arXiv 2511.02563](https://arxiv.org/pdf/2511.02563) | Research paper | Unread as of this entry — flagged for the person who picks up this differentiator to review before committing to an architecture, not yet assessed for relevance |
+| [Dropbox folder (prachisury11's dataset host?)](https://www.dropbox.com/scl/fo/2aczdnx37hxvcfdo4rq4q/AOjRokSTaiKxXmgUyqdcI6k) | Unknown — not inspected | Access-gated (`rlkey` in the URL); contents, license, and relationship to the Kaggle datasets above are unverified. Don't assume it's a mirror of any specific row above without checking |
+
+None of this is a commitment to build shoplifting/theft detection for the pilot scope (§13.1/§13.2, prd.md) — it's dataset sourcing for a differentiator that isn't currently scheduled. Whoever picks this up next should start with §6.3's loop: download one dataset, run it through the existing `MockAnomalyDetector` path to see where it fails, then decide if it's worth a real fine-tuning pass before the hackathon deadline.
+
 ## 8. AI/pipelines feature checklist
 
 Every detector, orchestrator, and correlation file named above is currently a 1-line placeholder — nothing is implemented yet.

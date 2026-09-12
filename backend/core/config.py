@@ -25,6 +25,26 @@ try:
 except json.JSONDecodeError:
     INGEST_FIELD_ALIASES = {}
 
+# A real hackathon test rig ("corp8.cloud") found 2026-09-13, docs/backend.md §12.7.
+# Its camera catalogue is a flat GET at a fixed URL, not a path under a configurable
+# base -- a different shape than the INGEST_API_BASE_URL + "/api/ingest" contract
+# assumed above (docs/backend.md §2, still the documented shape for the official
+# Sentinel portal contract). When set, INGEST_CATALOGUE_URL is used AS-IS and takes
+# priority; see integration/ingest_sync.py's _fetch_catalogue().
+INGEST_CATALOGUE_URL = os.environ.get("INGEST_CATALOGUE_URL", "")
+
+# RTSP on this rig authenticates per-connection via a registered email+password
+# embedded in the URL (rtsp://email:password@host:port/stream/<id>), not a per-camera
+# credential returned by the catalogue itself -- a public catalogue response almost
+# certainly can't include a working authenticated URL without leaking credentials to
+# every caller. integration/ingest_sync.py synthesizes the URL from these instead of
+# guessing at a catalogue field for it. All four unset by default; never commit real
+# values here -- set them only in your local, gitignored .env (see .env.example).
+INGEST_STREAM_EMAIL = os.environ.get("INGEST_STREAM_EMAIL", "")
+INGEST_STREAM_PASSWORD = os.environ.get("INGEST_STREAM_PASSWORD", "")
+INGEST_RTSP_HOST = os.environ.get("INGEST_RTSP_HOST", "")
+INGEST_RTSP_PORT = os.environ.get("INGEST_RTSP_PORT", "8554")
+
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
 
 # Auth (docs/backend.md §7/§12.4). SECRET_KEY MUST be overridden via env before any real
