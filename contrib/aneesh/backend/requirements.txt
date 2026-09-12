@@ -11,3 +11,6 @@ sqlalchemy>=2.0.0
 python-multipart>=0.0.9
 opencv-python-headless
 numpy
+httpx<0.28.0
+
+requests
