@@ -13,8 +13,37 @@ from db.database import get_db
 import schemas.camera as schemas
 import services.camera_service as camera_service
 from integration.discovery_adapter import SentinelCameraSource
+from integration.ingest_sync import sync_from_ingest_api
+from core.security import require_admin, log_action
+from models.user import User
 
 router = APIRouter()
+
+
+@router.get("/gap-analysis")
+async def gap_analysis(expected_minimum: int = 3, db: Session = Depends(get_db)):
+    """Coverage-shortfall report by district x department -- docs/frontend.md §3.1 Row 4
+    / §3.7, the Model 1 "gap-analysis report" requirement (docs/prd.md §0.1)."""
+    return {"gaps": camera_service.get_gap_analysis(db, expected_minimum)}
+
+
+@router.post("/sync-ingest", response_model=schemas.ImportSummaryResponse)
+async def sync_ingest(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """Pulls the hackathon's real /api/ingest catalogue and upserts it into the
+    registry -- docs/backend.md §2/§12.4. Admin-only since it can bulk-create/modify
+    camera rows. Returns 400 with a clear message if INGEST_API_BASE_URL isn't
+    configured, rather than silently no-op'ing."""
+    try:
+        summary = sync_from_ingest_api(db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to reach ingest API: {e}")
+    log_action(
+        "INGEST_SYNC", user=admin, resource_type="camera",
+        detail=f"created={summary.created} duplicates={summary.duplicates} failed={summary.failed}", db=db,
+    )
+    return summary
 
 
 @router.get("/", response_model=Dict[str, List[schemas.CameraResponse]])

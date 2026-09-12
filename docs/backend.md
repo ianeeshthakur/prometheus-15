@@ -57,11 +57,11 @@ Every adapter normalizes its protocol into the same `NormalizedFrame` shape so t
 
 ## 4. Data layer
 
-- Postgres, extended with **PostGIS** (currently missing — needed specifically for Model 1's GIS registry, the coverage gap-analysis report, and department/district spatial queries; suggested by the hackathon's own stack list). `backend/db/` needs a PostGIS-aware migration before the registry can serve real geo queries.
-- [ ] **Migration plan**: SQLite prototype (current `.env.example` default) → PostgreSQL/PostGIS. Not yet written.
-- Camera registry rows carry: department (one of 26), district, protocol, vendor, geolocation (plain lat/lng floats today, PostGIS point once migrated), status, and `ai_enabled`. Onboarding source (bulk/manual/API) is not yet a stored column — currently inferred only by which endpoint was called, not persisted per-row; see §12.
-- `backend/models/camera.py` is **real, ported** (plus a new `ai_profile` column, §12.3 fix), backed by `backend/schemas/camera.py` (Pydantic) and `backend/services/camera_service.py` (CRUD + idempotent upsert). `backend/models/watchlist.py` (`WatchlistEntry` + `WatchlistMatch`) is also **real, built §12.3**. `alert.py`, `event.py`, `investigation.py`, `user.py` under both `models/` and `schemas/` remain empty stubs — these need real schema design from scratch (start from `lib/types.ts`'s `Alert`/`CameraEvent` shapes on the frontend side, already decided there).
-- [ ] **ER diagram** — not yet drawn; only `Camera` has a real schema so far, drawing it now would be premature.
+- Postgres, extended with **PostGIS**, is the target for anything spatial (Model 1's GIS registry, the coverage gap-analysis report, department/district spatial queries; suggested by the hackathon's own stack list). SQLite (current `.env.example` default) stays the local-dev default.
+- [x] **Migration written**: `backend/migrations/001_postgis_setup.sql` — enables the extension, adds a `geom geometry(Point, 4326)` column alongside the existing lat/lng floats, backfills it, adds a GIST index, and a trigger to keep it in sync on insert/update. **Unverified against a real Postgres instance** — none is available in this dev environment; review/dry-run before applying anywhere that matters. Doesn't touch the SQLite path at all — `models/camera.py` keeps plain float columns regardless of which DB is configured.
+- All 6 registry-adjacent models are now real: `camera.py` (department, district, protocol, vendor, geolocation, status, `ai_enabled`, `ai_profile`), `watchlist.py` (`WatchlistEntry` + `WatchlistMatch`), `user.py` (`User` + `AuditLogEntry`), `event.py` (`CameraEvent`), `alert.py` (`Alert`), `investigation.py` (`Investigation` + `InvestigationEvidence`), `admin_settings.py` (`FacialRecognitionAuthorization`) — each backed by a `schemas/*.py` Pydantic pair. Built during the §12.4 build-out (2026-09-12), designed against `lib/types.ts`'s frontend shapes where one already existed (`Alert`, `CameraEvent`), and against `docs/frontend.md`'s textual spec where it didn't (`Investigation` — that page was still a placeholder when this was written).
+- Onboarding source (bulk/manual/API) is still not a stored column on `Camera` — inferred only by which endpoint was called, not persisted per-row.
+- [ ] **ER diagram** — still not drawn; 7 models now have real schemas, this is overdue but hasn't blocked anything yet.
 
 ## 5. Pipelines owned by the backend
 
@@ -71,19 +71,21 @@ Every adapter normalizes its protocol into the same `NormalizedFrame` shape so t
 Camera onboarding via manual entry, CSV/JSON bulk import, and the `/api/ingest` catalogue (§2) — all three paths required by Model 1. `camera_uid` is the deterministic key; upserts must be idempotent (re-importing the same catalogue must not create duplicates).
 - [x] Manual (`POST /api/cameras/`), CSV (`POST /api/cameras/import/csv`), and JSON (`POST /api/cameras/import/json`) onboarding all implemented and tested (`tests/test_cameras.py`).
 - [x] Idempotent upsert by `camera_uid` — `services/camera_service.upsert_camera()`, with a race-condition retry on `IntegrityError`.
-- [ ] The `/api/ingest` catalogue path (§2) specifically — the JSON import endpoint is generic enough to accept it, but nothing yet calls the hackathon's real endpoint and feeds it through. That sync job is unbuilt.
+- [x] `/api/ingest` catalogue sync — `integration/ingest_sync.py` + `POST /api/cameras/sync-ingest` (admin-only). **Unverified against the real endpoint**: `INGEST_API_BASE_URL` is unset until organizers publish a live host; calling the endpoint unconfigured returns a clear 400, not a silent no-op (tested). The field-mapping guesses at the undocumented parts of the payload shape (department/vms_vendor aren't in the documented fields) — expect to adjust once a real payload can be inspected.
+- [x] Gap-analysis query — `services/camera_service.get_gap_analysis()` + `GET /api/cameras/gap-analysis`, real coverage-shortfall report by district × department (docs/frontend.md §3.1 Row 4 / §3.7), tested.
 
 ### Pipeline 2 — Protocol normalization
 The adapter factory (`backend/adapters/factory.py`) selects RTSP/HLS/ONVIF/Vendor-SDK per camera and normalizes output into `NormalizedFrame` before handing off to the AI orchestrator.
 - [x] Factory dispatch logic + `NormalizedFrame` schema — implemented; RTSP/HLS paths real, ONVIF/Vendor explicitly `UNSUPPORTED` per §3.
+- [x] Frame-rate pacing — `video/frame_sampler.py`'s `FrameSampler` wraps an adapter and caps reads at `AI_TARGET_FPS`, replacing the inline `asyncio.sleep()` `routers/streams.py` used to do this with.
 
 ### Pipeline 5 — Alerts & investigation
-Alert severity scoring (consumes AI orchestrator + intelligence-correlation output — ai_pipelines.md §3), delivery (web only — no mobile app per prd.md §3 non-goals, so this is resolved, not open), and investigation case-file CRUD backing frontend.md §3.5.
-- [x] Live event delivery — `routers/streams.py`'s `/api/streams/events/stream` SSE endpoint + `intelligence/alert_engine.py` pub/sub, wired to the real `AIOrchestrator` output (plates/persons/anomalies → `NormalizedEvent` → `alert_engine.process_event()`).
-- [x] **Watchlist matching** — real DB lookup via `intelligence/watchlist_matcher.py` against `models/watchlist.py`, exact match only (fuzzy matching deliberately deferred, see that file's docstring). Fixed §12.3, verified in `tests/test_watchlists.py`.
-- [ ] Severity scoring rubric — watchlist-triggered alerts now use the matched entry's real `risk_level` (§12.3) instead of a hardcoded "CRITICAL", but there's still no rubric for non-watchlist events (anomalies, plain detections) — must map to the CRITICAL/HIGH/MEDIUM/LOW/INFO badges in frontend.md §3.3.
-- [ ] Alert persistence — events are broadcast live via SSE but never written to a DB table (`models/alert.py` doesn't exist yet), so there is no alert history/query API yet, only the live stream.
-- [ ] Case-file CRUD + evidence attachment backing the Investigations detail tabs — `models/investigation.py` and `routers/investigations.py` are still empty stubs.
+Alert severity scoring, delivery, and investigation case-file CRUD backing frontend.md §3.3/§3.5 — **all built** during the 2026-09-12 §12.4 pass, verified end-to-end in `tests/test_investigations.py` and `tests/test_alerts.py`.
+- [x] Live event delivery — `routers/streams.py`'s `/api/streams/events/stream` SSE endpoint + `intelligence/alert_engine.py` pub/sub, wired to the real `AIOrchestrator` output.
+- [x] Watchlist matching — real DB lookup via `intelligence/watchlist_matcher.py`, exact match only (fuzzy matching deliberately deferred, see that file's docstring).
+- [x] **Severity scoring rubric** (`services/alert_service.py`): WATCHLIST_MATCH uses the matched entry's real `risk_level`; ANOMALY uses a type→severity map (`WRONG_WAY`→CRITICAL, `UNATTENDED_OBJECT`→HIGH, `CROWD`/`LOITERING`→MEDIUM, unmapped types→MEDIUM default — `anomaly_type` stays an open string per ai_pipelines.md §2, so this never errors on an unrecognized type); routine unmatched plate/person detections deliberately do **not** become alerts (7 C's "Courteous" — don't cry wolf), just a persisted `CameraEvent`.
+- [x] **Alert persistence** — `models/alert.py` + `services/alert_service.py`; every watchlist match and anomaly now creates a real, queryable `Alert` row (`GET/PATCH /api/alerts/*`), not just an SSE broadcast. Every event (matched or not) is separately persisted as a `CameraEvent` (`services/event_service.py`) — this is what closed the original "events broadcast live but never written to a DB table" gap.
+- [x] **Case-file CRUD + evidence** — `models/investigation.py` (`Investigation` + `InvestigationEvidence`), `services/investigation_service.py`, `routers/investigations.py`: create/list/status, evidence attach/list, `POST /api/alerts/{alert_uid}/investigation` to open a case directly from an alert (auto-sets priority from severity). Timeline and Map Trace (frontend.md §3.5) are *derived*, not separate tables — queried from `CameraEvent`/`Alert` rows matching the case's `entity`, via `intelligence/entity_graph.py`'s `trace_entity()`. That trace function is exact-identifier correlation (today: normalized plate), not graph-theoretic re-identification — appearance-based re-id (ai_pipelines.md §5 differentiator) isn't built, so that's honestly as far as "cross-camera correlation" goes right now. It's still the real shape of the hackathon's graded live vehicle-tracking test (docs/prd.md §0.1); verified end-to-end against synthetic data in `tests/test_investigations.py` since no real ingest-API camera exists to test against yet.
 
 ## 6. API surface (`backend/routers/`)
 
@@ -105,31 +107,61 @@ Alert severity scoring (consumes AI orchestrator + intelligence-correlation outp
 | GET | `/api/ai/config` | `ai.py` | active profiles |
 | POST | `/api/ai/analyze-frame` | `ai.py` | test endpoint, synthesizes a dummy frame — exercises the orchestrator without a camera |
 | GET | `/api/health/` | `health.py` | CPU/memory/ffmpeg-availability |
-| GET | `/api/watchlists/` | `watchlists.py` | list, filterable by category/active_only; **built §12.3** |
-| POST | `/api/watchlists/` | `watchlists.py` | create an entry; **built §12.3** |
+| GET | `/api/watchlists/` | `watchlists.py` | list, filterable by category/active_only |
+| POST | `/api/watchlists/` | `watchlists.py` | create an entry |
+| POST | `/api/auth/login` | `auth.py` | returns a JWT |
+| GET | `/api/auth/me` | `auth.py` | current user, requires auth |
+| POST | `/api/auth/users` | `auth.py` | admin-only |
+| GET | `/api/auth/users` | `auth.py` | admin-only |
+| GET | `/api/cameras/gap-analysis` | `cameras.py` | real coverage-shortfall report |
+| POST | `/api/cameras/sync-ingest` | `cameras.py` | admin-only, pulls the real `/api/ingest` catalogue (§2) |
+| GET | `/api/alerts/` | `alerts.py` | filterable by severity/status/district/camera_uid |
+| GET | `/api/alerts/{alert_uid}` | `alerts.py` | |
+| PATCH | `/api/alerts/{alert_uid}/status` | `alerts.py` | requires auth, writes an audit-log entry |
+| POST | `/api/alerts/{alert_uid}/investigation` | `alerts.py` | opens a case from an alert, requires auth |
+| GET | `/api/investigations/` | `investigations.py` | filterable by status/entity |
+| POST | `/api/investigations/` | `investigations.py` | requires auth |
+| GET | `/api/investigations/{case_uid}` | `investigations.py` | |
+| PATCH | `/api/investigations/{case_uid}/status` | `investigations.py` | requires auth |
+| GET | `/api/investigations/{case_uid}/timeline` | `investigations.py` | derived from CameraEvent + Alert rows |
+| GET | `/api/investigations/{case_uid}/trace` | `investigations.py` | the graded vehicle-tracking test's shape |
+| GET/POST | `/api/investigations/{case_uid}/evidence` | `investigations.py` | POST requires auth |
+| GET | `/api/admin/facial-recognition` | `admin.py` | current status + full authorization history |
+| POST | `/api/admin/facial-recognition/authorize` | `admin.py` | admin-only, requires a stated reason |
+| GET | `/api/admin/audit-log` | `admin.py` | admin-only |
+| GET | `/api/admin/gov-lookup/{vahan\|sarthi\|egujcop\|afis\|nafis}/{id}` | `admin.py` | admin-only, always returns a clearly-labeled mock |
 | GET | `/` | `main.py` | liveness |
 
-**Not implemented — files are still empty placeholders, deliberately not included in `main.py`** (including an unimplemented router would break startup): `auth.py`, `alerts.py`, `investigations.py`. Building any of these means: write the router, populate its `models/*.py` + `schemas/*.py` pair, then add the `app.include_router(...)` line in `main.py`. (`watchlists.py` no longer belongs on this list — CSV bulk import is its one remaining gap, tracked in §12.4.)
+**Every named router is now built and wired.** All routers from the original stub list (`auth.py`, `alerts.py`, `investigations.py`, `watchlists.py`) plus a new one not in that list (`admin.py`, for the facial-recognition gate — docs/frontend.md §3.8 and docs/prd.md §13.2 both call for a real, visible toggle here, not just a policy sentence).
 
 ## 7. Security & privacy posture
 
 - No credential or raw camera IP ever reaches the browser (carried forward unchanged from the project's original rules).
-- **Facial recognition / biometric identification** — gated behind an explicit authorization workflow if ever built, never a default. Grounded in India's DPDP Act, 2023 and the Puttaswamy privacy judgment. Surface this as a real, auditable toggle in Administration (frontend.md §3.8), not just a policy sentence — a differentiator against the hackathon's "cybersecurity/privacy/RBAC/audit" judged design dimension.
-- RBAC: department-scoped users vs. platform admin (feeds Model 1's "role-based search" requirement, frontend.md §3.7) plus a full audit log (frontend.md §3.8) — who/what/when for every alert view, case action, and config change.
-- **Real government database integration** (VAHAN, SARTHI, eGujCop, AFIS, NAFIS) is out of scope for the pilot — no real credentialed access. Model these as clearly-labeled mock adapters (never silently fabricated data) so the architecture visibly answers the integration question without claiming real access it doesn't have.
-- [ ] Single consolidated threat model / security posture doc — not yet written; this section is the seed of it.
+- [x] **Auth + RBAC** — `core/security.py` (JWT via `pyjwt`, password hashing via `bcrypt` directly — not `passlib`, see requirements.txt's comment for why), `models/user.py` (`User`: `ADMIN` sees every department, `OPERATOR` is scoped to one via `department_scope`, feeding frontend.md §3.7's "role-based search"), `routers/auth.py`. A first `ADMIN` account is bootstrapped automatically on a fresh DB from `ADMIN_BOOTSTRAP_USERNAME`/`ADMIN_BOOTSTRAP_PASSWORD` (loud, obvious defaults — override before any real use) since there's otherwise no way to log in at all. Not yet wired into every route that arguably needs it (e.g. `GET /api/cameras/` has no auth requirement today) — only the routes where a write or a privileged read made it an obvious first cut.
+- [x] **Audit log** — `models/user.AuditLogEntry` + `core/security.log_action()`, `GET /api/admin/audit-log`. Wired into: login, user creation, alert status changes, investigation creation/status/evidence, camera→investigation linking, ingest sync, facial-recognition authorization. **Not** wired into every alert *view* yet (frontend.md §3.8 literally says "every alert view" — that's a lot of log volume for a read; revisit if that's really the intent or if "view" meant "action taken while viewing").
+- [x] **Facial recognition / biometric identification** — gated behind an explicit authorization workflow, never a default (`is_currently_enabled()` returns `False` when no authorization row exists at all). `models/admin_settings.FacialRecognitionAuthorization`: each row is one authorization *event* (grant or revoke) with a required `reason` and `authorized_by`, not a single mutable flag — the table itself is the audit trail. `GET/POST /api/admin/facial-recognition*`, admin-only to authorize. Grounded in India's DPDP Act, 2023 and the Puttaswamy privacy judgment.
+- [x] **Mock government database lookups** — `integration/mock_gov_adapters.py` (VAHAN, SARTHI, eGujCop, AFIS, NAFIS), `GET /api/admin/gov-lookup/*`. Every response carries `"mock": true` and an explanatory message; no real credentialed access exists or is attempted.
+- [ ] Single consolidated threat model / security posture doc — not yet written; this section is still the seed of it, now with more to consolidate.
 
 ## 8. Testing strategy
 
-Ported from `contrib/aneesh/backend/`: these are live-server integration tests (start `uvicorn main:app`, then run the script; not pytest-collected unit tests) that assert against real HTTP responses.
+[x] **Converted to real pytest** (2026-09-12) — was plain `assert`-and-`print` scripts requiring a manually-started `uvicorn` process; now uses FastAPI's `TestClient` (in-process, no live server needed) against an isolated SQLite file (`tests/conftest.py`, never the dev `DATABASE_URL`). Run with:
 
-- [x] `tests/test_cameras.py` — camera CRUD, duplicate rejection, CSV/JSON bulk import (including per-row error reporting and idempotency).
-- [x] `tests/test_adapters.py` — factory resolution across HLS/ONVIF/Vendor SDK, 404 on missing camera. (The original's legacy-registry test case was dropped along with that module, §0.)
-- [x] `tests/test_ai.py` — orchestrator profile gating (TRAFFIC vs SECURITY output shape), invalid-profile 422.
-- [x] `tests/test_watchlists.py` (new, §12.3) — creates a real watchlist entry, feeds matching/non-matching events through the real in-process `AlertEngine`, confirms a real watchlist alert (correct risk level/category) vs. a plain event, and confirms `match_count` genuinely increments.
-- [ ] `tests/test_alerts.py` — still an empty stub; nothing to test yet since alerts themselves still aren't persisted (§5 Pipeline 5) — watchlist *matches* now are (§12.3).
-- [ ] Convert these to pytest (currently plain scripts with `assert` + `print`, run manually against a live server) so they run in CI.
-- Minimum bar before the hackathon-day live test: the Investigations map-trace flow (frontend.md §3.5) has an end-to-end test against at least one real ingest-API camera, not only mocked data — this is the graded functional test, it cannot be mock-only. **Not yet possible** — investigations aren't built (§5), and no real ingest-API host is configured (`INGEST_API_BASE_URL` unset, `core/config.py`).
+```
+cd backend
+.venv\Scripts\python -m pytest -v
+```
+
+28 tests, all passing as of 2026-09-12. One known limitation: the DB fixture is session-scoped (one shared DB for the whole run), not per-test-isolated — a true per-test DB would need `db/database.py`'s module-level `engine`/`SessionLocal` singletons restructured, which wasn't worth it for this pass. Test functions use distinct identifiers per concern (the same convention the original standalone scripts used) specifically so they can safely share one DB.
+
+- `tests/test_cameras.py` — CRUD, duplicate rejection, CSV/JSON bulk import, gap-analysis, ingest-sync auth/error-handling.
+- `tests/test_adapters.py` — factory resolution across HLS/ONVIF/Vendor SDK, 404 on missing camera.
+- `tests/test_ai.py` — orchestrator profile gating, invalid-profile 422.
+- `tests/test_watchlists.py` — real DB-backed matching end-to-end, including `match_count` incrementing.
+- `tests/test_alerts.py` — the severity rubric specifically: anomaly type→severity mapping (including the unmapped-type fallback), and that routine unmatched detections don't become alerts.
+- `tests/test_investigations.py` — the full auth → watchlist match → persisted alert → acknowledge → open investigation → timeline → map trace → evidence flow, in one test since each step depends on the last.
+
+Minimum bar before the hackathon-day live test: the Investigations map-trace flow has an end-to-end test against at least one real ingest-API camera, not only synthetic data — this is the graded functional test, it cannot be mock-only. **`tests/test_investigations.py` proves the shape works end-to-end against synthetic data (real DB writes, real joins, real timestamps) — the literal "against a real ingest-API camera" part is still blocked on organizers publishing a live host** (`INGEST_API_BASE_URL` unset, `core/config.py`); nothing else is missing to run it for real once that exists.
 
 ## 9. Scalability posture (design ceiling, not pilot requirement)
 
@@ -144,8 +176,11 @@ Statewide target is ~80,000 cameras. The pilot does not need to run at that scal
 
 - Model 3-style VMS federation middleware (§1).
 - Kafka/Redis Streams event bus (§9) — needed at Phase 2+ scale-out, not pilot scale.
-- Real credentialed integration with VAHAN/SARTHI/eGujCop/AFIS/NAFIS (§7).
-- Facial recognition / biometric ID (§7) unless explicitly authorized.
+- Real credentialed integration with VAHAN/SARTHI/eGujCop/AFIS/NAFIS (§7) — mock adapters exist (§7), real access does not and is explicitly out of scope.
+- Facial recognition / biometric ID unless explicitly authorized (§7) — the gate/toggle enforcing this is built; the capability itself (an actual face-recognition model) was never in scope regardless.
+- Fuzzy (Levenshtein/Jaro-Winkler) watchlist matching (§5 Pipeline 5, `intelligence/watchlist_matcher.py`) — needs real OCR error-rate data to set a defensible threshold, not a guessed cutoff.
+- Appearance-based re-identification for cross-camera correlation beyond exact plate match (§5 Pipeline 5, `intelligence/entity_graph.py`) — ai_pipelines.md §5 differentiator, not built.
+- Per-test database isolation in the pytest suite (§8) — session-scoped DB is good enough for now.
 
 ## 11. Local backend setup
 
@@ -157,7 +192,9 @@ cp ../.env.example ../.env                             # DATABASE_URL, HLS_OUTPU
 uvicorn main:app --reload --port 8000
 ```
 
-`requirements.txt` is now pinned (ported from `contrib/aneesh/backend/requirements.txt`, `requests` added for the test scripts in §8). Default `DATABASE_URL` is SQLite (`sqlite:///./gvista.db`); switch to a Postgres+PostGIS URL once §4's migration lands. `ffmpeg`/`ffprobe` must be separately installed and on `PATH` for `video/ffmpeg_runner.py` (real RTSP→HLS transcoding) and `routers/health.py`'s `ffmpeg_available` check — not a pip dependency.
+`requirements.txt` is now pinned (ported from `contrib/aneesh/backend/requirements.txt`; `requests`, `bcrypt`, `pyjwt`, `pytest`, `httpx` added during later passes — see the file's comments for why `bcrypt` is used directly rather than via `passlib`). Default `DATABASE_URL` is SQLite (`sqlite:///./gvista.db`); switch to a Postgres+PostGIS URL and run `migrations/001_postgis_setup.sql` once ready (§4). `ffmpeg`/`ffprobe` must be separately installed and on `PATH` for `video/ffmpeg_runner.py` (real RTSP→HLS transcoding) and `routers/health.py`'s `ffmpeg_available` check — not a pip dependency.
+
+On first startup, a bootstrap `ADMIN` account is created automatically (username/password from `ADMIN_BOOTSTRAP_USERNAME`/`ADMIN_BOOTSTRAP_PASSWORD`, defaulting to `admin`/`changeme123` — change these before any real use, §7). Run `pytest` per §8 to verify the install.
 
 ## 12. Backend feature checklist
 
@@ -191,19 +228,35 @@ Full status as of the `contrib/aneesh/` port, 2026-09-12. **Done** = ported and 
 - [x] `routers/streams.py`'s AI pipeline now reads `Camera.ai_profile` per camera (new column, defaults to `TRAFFIC`, backs frontend.md §3.8's per-camera profile selector) instead of hardcoding `TRAFFIC` for every camera. Falls back to `TRAFFIC` with a logged warning if a camera somehow has an invalid value.
 - [x] Pydantic v1-style patterns audited across all of `backend/` (`@validator`, `.dict()`, `.json()` on a model, `orm_mode`, `class Config:`, `@root_validator`) — nothing found beyond the one already-fixed `schemas/camera.py` validator. No further action needed unless more of `contrib/aneesh/` gets ported later.
 
-### 12.4 Not built (empty stubs, no code exists to fix)
+### 12.4 Built (2026-09-12, second pass — verified against pytest + manual endpoint checks)
 
-- [ ] `models/`, `schemas/` for `alert.py`, `event.py`, `investigation.py`, `user.py` — design these against `lib/types.ts`'s already-decided frontend shapes (`Alert`, `CameraEvent`, etc.) rather than from scratch. (`watchlist.py` is done under both — §12.3.)
-- [ ] `routers/auth.py`, `alerts.py`, `investigations.py` — and their `main.py` wiring, once the models above exist. (`watchlists.py` is done — §12.3, list+create only, CSV bulk import still missing.)
-- [ ] Alert persistence (events broadcast live via SSE, never written to a DB table) + severity scoring rubric (§5 Pipeline 5) — watchlist *matches* now persist (§12.3), but the alert record itself (severity, acknowledge/escalate state, frontend.md §3.3) still doesn't
-- [ ] Case-file CRUD + evidence attachment for Investigations (§5 Pipeline 5)
-- [ ] `intelligence/entity_graph.py` — cross-camera entity correlation (ai_pipelines.md §4). (`watchlist_matcher.py` is done for exact plate matches — §12.3; fuzzy matching for OCR-noisy reads is a separate, deliberately-deferred gap, see that file's docstring.)
-- [ ] `/api/ingest` catalogue-sync job (§2) — nothing yet calls the hackathon's real endpoint; the generic JSON bulk-import endpoint could receive its output once built
-- [ ] PostGIS migration (§4) — camera lat/lng are plain floats on SQLite today
-- [ ] Gap-analysis query (coverage by district × department) backing frontend.md §3.1/§3.7
-- [ ] RBAC + audit log (§7) — `core/security.py` documents the policy but implements nothing yet
-- [ ] Facial-recognition authorization gate + toggle (§7)
-- [ ] Mock (clearly labeled) VAHAN/SARTHI/eGujCop/AFIS/NAFIS adapters (§7)
-- [ ] `video/frame_sampler.py` — rate-limit frame reads to `AI_TARGET_FPS` instead of reading every available frame (currently `routers/streams.py` just sleeps between reads inline)
-- [ ] Convert the `tests/*.py` scripts to real pytest (§8)
-- [ ] End-to-end test of the vehicle-trace flow against a real ingest-API camera (§8) — blocked on Investigations existing at all
+Every item that was in this section as "not built" is now built, with one deliberate exception (fuzzy watchlist matching — see below). Detail on each lives in the section noted; this is the roll-up.
+
+- [x] `models/`/`schemas/` for `alert.py`, `event.py`, `investigation.py`, `user.py`, `admin_settings.py` (§4)
+- [x] `routers/auth.py`, `alerts.py`, `investigations.py`, `admin.py` (new, not in the original stub list) — all wired into `main.py` (§6)
+- [x] Alert persistence + severity scoring rubric (§5 Pipeline 5)
+- [x] Case-file CRUD + evidence attachment for Investigations, plus derived Timeline/Map-trace (§5 Pipeline 5)
+- [x] `intelligence/entity_graph.py` — exact-identifier cross-camera correlation (§5 Pipeline 5; fuzzy/appearance-based correlation deliberately deferred, §10)
+- [x] `/api/ingest` catalogue-sync job (§5 Pipeline 1) — untested against the real endpoint, organizers haven't published a host yet
+- [x] PostGIS migration written (§4) — untested against a real Postgres instance, none available here
+- [x] Gap-analysis query (§5 Pipeline 1)
+- [x] RBAC + audit log (§7)
+- [x] Facial-recognition authorization gate + toggle (§7)
+- [x] Mock VAHAN/SARTHI/eGujCop/AFIS/NAFIS adapters (§7)
+- [x] `video/frame_sampler.py`, wired into `routers/streams.py` (§5 Pipeline 2)
+- [x] Converted `tests/*.py` to real pytest — 28 tests passing (§8)
+- [x] End-to-end vehicle-trace test — done against synthetic data (`tests/test_investigations.py`); the "real ingest-API camera" part is blocked on external access, not on anything left to build here (§8)
+
+Two real bugs were caught and fixed while building this, both from writing an actual test rather than trusting the code: a `passlib`/modern-`bcrypt` incompatibility that broke password hashing entirely (switched to `bcrypt` directly, see `requirements.txt`'s comment), and a `DetachedInstanceError` from reading ORM attributes after the session that fetched them had committed and closed (`intelligence/alert_engine.py` — fixed by snapshotting needed fields before the commit, same fix as the earlier §12.3 watchlist bug, so this pattern is now worth watching for elsewhere).
+
+### 12.5 Remaining known gaps (small, deliberate, or blocked on something external)
+
+- [ ] Fuzzy (Levenshtein/Jaro-Winkler) watchlist matching — needs real OCR error-rate data to set a defensible threshold; deliberately not guessed (`intelligence/watchlist_matcher.py`'s docstring)
+- [ ] Appearance-based re-identification for cross-camera correlation beyond exact plate match — ai_pipelines.md §5 differentiator, not started
+- [ ] Auth not enforced on every route that arguably needs it — only writes/privileged reads got it in this pass (§7)
+- [ ] Audit log not wired into every alert *view* (only actions) — worth confirming that's really the intent given the log-volume implications (§7)
+- [ ] ER diagram still not drawn, now overdue given 7 models have real schemas (§4)
+- [ ] Onboarding source (bulk/manual/API) not a stored column on `Camera` (§4)
+- [ ] Per-test database isolation in pytest — session-scoped DB works but isn't ideal (§8)
+- [ ] Single consolidated threat-model doc (§7)
+- [ ] `/api/ingest` field-mapping in `integration/ingest_sync.py` is a best-effort guess at undocumented parts of the payload shape — will need adjusting once a real payload can be inspected

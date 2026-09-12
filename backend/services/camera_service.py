@@ -70,3 +70,41 @@ def upsert_camera(db: Session, camera_in: CameraCreate) -> tuple[Camera, bool]:
         if existing_camera:
             return update_camera(db, existing_camera, camera_in), False
         raise
+
+
+# Same known-departments list frontend.md §0.1 names (the 26-department scope isn't
+# fully enumerated anywhere as data yet -- this is the working set actually seen in
+# camera rows, not a hardcoded canonical list of all 26).
+def get_gap_analysis(db: Session, expected_minimum: int = 3) -> List[dict]:
+    """Coverage-shortfall report by district x department -- docs/frontend.md §3.1 Row 4
+    / §3.7, docs/backend.md §12.4. Mirrors lib/mock-data.ts's getGapAnalysis() logic on
+    the frontend, against the real registry instead of mock data."""
+    from sqlalchemy import func
+
+    rows = (
+        db.query(Camera.district, Camera.department, func.count(Camera.id).label("camera_count"))
+        .group_by(Camera.district, Camera.department)
+        .all()
+    )
+    counts = {(r.district, r.department): r.camera_count for r in rows}
+
+    districts = sorted({d for d, _ in counts.keys()})
+    departments = sorted({dept for _, dept in counts.keys()})
+
+    gaps = []
+    for district in districts:
+        for department in departments:
+            count = counts.get((district, department), 0)
+            shortfall = expected_minimum - count
+            if shortfall > 0:
+                gaps.append(
+                    {
+                        "district": district,
+                        "department": department,
+                        "camera_count": count,
+                        "expected_minimum": expected_minimum,
+                        "shortfall": shortfall,
+                    }
+                )
+    gaps.sort(key=lambda g: g["shortfall"], reverse=True)
+    return gaps

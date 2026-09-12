@@ -15,3 +15,17 @@ APP_MODE = os.environ.get("APP_MODE", "DEMO")  # DEMO | LIVE -- docs/frontend.md
 INGEST_API_BASE_URL = os.environ.get("INGEST_API_BASE_URL", "")
 
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+
+# Auth (docs/backend.md §7/§12.4). SECRET_KEY MUST be overridden via env before any real
+# deployment -- this default is fine for local dev only and is deliberately obvious so
+# nobody mistakes it for a real secret.
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-secret-change-me-before-any-real-use")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_MINUTES = int(os.environ.get("JWT_EXPIRE_MINUTES", "480"))  # 8h shift
+
+# Bootstrap admin, created on first startup only if the users table is empty (see
+# main.py's lifespan) -- there is no other way to get the first ADMIN account on a
+# fresh DB. CHANGE THE PASSWORD before any real deployment; the default is loud on
+# purpose so it's obviously a placeholder.
+ADMIN_BOOTSTRAP_USERNAME = os.environ.get("ADMIN_BOOTSTRAP_USERNAME", "admin")
+ADMIN_BOOTSTRAP_PASSWORD = os.environ.get("ADMIN_BOOTSTRAP_PASSWORD", "changeme123")

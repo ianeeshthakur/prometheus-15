@@ -21,6 +21,7 @@ import logging
 from db.database import SessionLocal
 from services import camera_service
 from video.stream_manager import stream_manager
+from video.frame_sampler import FrameSampler
 from adapters.factory import AdapterFactory
 from ai.orchestrator import AIOrchestrator
 from ai.schemas import AIProfile
@@ -94,13 +95,17 @@ async def _run_ai_pipeline(camera_id: str):
         logger.error(f"[{camera_id}] AI pipeline adapter failed to connect")
         return
 
+    # Paces reads to AI_TARGET_FPS instead of pulling every available frame --
+    # docs/backend.md §12.4, replaces the previous inline asyncio.sleep(1/5) below.
+    sampler = FrameSampler(adapter)
+
     try:
         while True:
             status = stream_manager.get_stream_status(camera_id)
             if not status or status.status != "LIVE":
                 break
 
-            frame = await asyncio.to_thread(adapter.read_frame)
+            frame = await asyncio.to_thread(sampler.read_frame)
             if frame is None:
                 await asyncio.sleep(1)
                 continue
@@ -149,9 +154,6 @@ async def _run_ai_pipeline(camera_id: str):
                     )
                 )
 
-            # docs/ai_pipelines.md §1 AI_TARGET_FPS=5 -- sample roughly that often, not
-            # every available frame.
-            await asyncio.sleep(1 / 5)
     finally:
         await asyncio.to_thread(adapter.close)
         logger.info(f"[{camera_id}] AI pipeline stopped")

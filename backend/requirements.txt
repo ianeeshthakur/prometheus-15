@@ -18,3 +18,13 @@ python-multipart>=0.0.9
 opencv-python-headless
 numpy
 requests>=2.31.0
+
+# Added for docs/backend.md §12.4 (auth/RBAC + pytest conversion).
+# NOTE: use `bcrypt` directly, not passlib -- passlib 1.7.4 (unmaintained since 2020)
+# probes a `bcrypt.__about__` attribute that modern bcrypt (>=4.1) removed, which
+# breaks password hashing even for short passwords. Hit this for real during the
+# §12.4 build-out.
+bcrypt>=4.1.0
+pyjwt>=2.9.0
+pytest>=8.0.0
+httpx>=0.27.0
