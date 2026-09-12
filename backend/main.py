@@ -1,9 +1,9 @@
 # G-VISTA backend entrypoint. Ported from contrib/aneesh/backend/main.py, adapted to
 # the models/ + schemas/ + db/ package layout and core/ config module. Only routers
 # that are actually implemented are included below -- see docs/backend.md §12 for what's
-# still missing (auth, alerts, investigations, watchlists routers all remain 1-line
-# placeholders and are deliberately NOT wired in here yet, since including an
-# unimplemented router would break startup).
+# still missing (auth, alerts, investigations routers remain 1-line placeholders and
+# are deliberately NOT wired in here yet, since including an unimplemented router
+# would break startup). watchlists.py was built during the §12.3 cleanup pass.
 import os
 import logging
 from contextlib import asynccontextmanager
@@ -19,7 +19,7 @@ from db.database import engine
 configure_logging()
 logger = logging.getLogger("gvista-backend")
 
-from routers import streams, cameras, health, adapters, ai  # noqa: E402 (after logging config)
+from routers import streams, cameras, health, adapters, ai, watchlists  # noqa: E402 (after logging config)
 
 
 @asynccontextmanager
@@ -27,7 +27,9 @@ async def lifespan(app: FastAPI):
     logger.info("Starting G-VISTA backend")
 
     try:
-        import models.camera  # noqa: F401 -- ensures the model is registered on Base before create_all
+        # noqa: F401 -- these imports ensure every model is registered on Base before create_all
+        import models.camera  # noqa: F401
+        import models.watchlist  # noqa: F401
         Base.metadata.create_all(bind=engine)
         logger.info("Database initialized successfully.")
     except Exception as e:
@@ -69,6 +71,7 @@ app.include_router(adapters.router, prefix="/api/cameras", tags=["adapters"])
 app.include_router(streams.router, prefix="/api/streams", tags=["streams"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(watchlists.router, prefix="/api/watchlists", tags=["watchlists"])
 
 
 @app.get("/")

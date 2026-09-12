@@ -1,13 +1,24 @@
-# HLSAdapter -- docs/backend.md §3. Ported verbatim from contrib/aneesh/backend/adapters/hls.py.
+# HLSAdapter -- docs/backend.md §3.
+#
+# Fixed during the docs/backend.md §12.3 cleanup pass (no longer verbatim from
+# contrib/aneesh/backend/adapters/hls.py): self-reconnect-with-backoff added (mirrors
+# video/stream_manager.py's pattern), and frame timestamps now prefer the stream's own
+# reported position over pure local read-time -- same treatment as adapters/rtsp.py,
+# see that file for the detailed rationale/caveats. TCP-transport forcing doesn't apply
+# here: HLS is already HTTP, inherently TCP.
+import time
 import cv2
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from .base import CameraAdapter
 from .models import NormalizedFrame
 
 logger = logging.getLogger(__name__)
+
+MAX_RECONNECT_ATTEMPTS = 3
+BASE_BACKOFF_SECONDS = 2
 
 
 class HLSAdapter(CameraAdapter):
@@ -19,6 +30,8 @@ class HLSAdapter(CameraAdapter):
         self.cap: Optional[cv2.VideoCapture] = None
         self._status = "NOT_CONFIGURED" if not stream_url else "CONNECTING"
         self._frame_seq = 0
+        self._reconnect_attempts = 0
+        self._stream_start_time: Optional[datetime] = None
 
     def connect(self) -> bool:
         if not self._stream_url:
@@ -35,6 +48,7 @@ class HLSAdapter(CameraAdapter):
                 return False
 
             self._status = "ACTIVE"
+            self._stream_start_time = datetime.now()
             logger.info(f"[{self.camera_uid}] HLSAdapter successfully connected.")
             return True
         except Exception as e:
@@ -42,25 +56,62 @@ class HLSAdapter(CameraAdapter):
             self._status = "ERROR"
             return False
 
+    def _attempt_reconnect(self) -> bool:
+        """Reconnect with capped exponential backoff. Blocking (time.sleep) --
+        callers on an event loop must invoke this adapter's methods via
+        asyncio.to_thread, as routers/streams.py already does."""
+        if self._reconnect_attempts >= MAX_RECONNECT_ATTEMPTS:
+            logger.error(f"[{self.camera_uid}] Max reconnect attempts ({MAX_RECONNECT_ATTEMPTS}) reached, marking OFFLINE.")
+            self._status = "OFFLINE"
+            self._reconnect_attempts = 0
+            return False
+
+        self._reconnect_attempts += 1
+        backoff = min(BASE_BACKOFF_SECONDS * (2 ** (self._reconnect_attempts - 1)), 30)
+        logger.info(
+            f"[{self.camera_uid}] Reconnecting, attempt {self._reconnect_attempts}/{MAX_RECONNECT_ATTEMPTS} in {backoff}s..."
+        )
+        self._status = "RECONNECTING"
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+        time.sleep(backoff)
+        return self.connect()
+
+    def _resolve_timestamp(self) -> datetime:
+        """See adapters/rtsp.py's _resolve_timestamp for the full rationale/caveat --
+        same treatment: prefer stream-relative CAP_PROP_POS_MSEC anchored to this
+        adapter's connect-time wall clock, fall back to local time. Unverified against
+        a real feed."""
+        pos_msec = self.cap.get(cv2.CAP_PROP_POS_MSEC) if self.cap else 0
+        if pos_msec and pos_msec > 0 and self._stream_start_time:
+            return self._stream_start_time + timedelta(milliseconds=pos_msec)
+        return datetime.now()
+
     def read_frame(self) -> Optional[NormalizedFrame]:
         if not self.cap or not self.cap.isOpened():
-            self._status = "OFFLINE"
-            return None
+            if not self._attempt_reconnect():
+                return None
 
         ret, frame = self.cap.read()
         if not ret or frame is None:
             logger.warning(f"[{self.camera_uid}] Failed to read frame from HLS stream.")
-            self._status = "DEGRADED"
-            return None
+            if not self._attempt_reconnect():
+                return None
+            ret, frame = self.cap.read()
+            if not ret or frame is None:
+                self._status = "DEGRADED"
+                return None
 
         self._status = "ACTIVE"
+        self._reconnect_attempts = 0
         self._frame_seq += 1
         height, width = frame.shape[:2]
 
         return NormalizedFrame(
             camera_uid=self.camera_uid,
             frame=frame,
-            timestamp=datetime.now(),
+            timestamp=self._resolve_timestamp(),
             width=width,
             height=height,
             source_protocol="HLS",
@@ -75,4 +126,5 @@ class HLSAdapter(CameraAdapter):
             self.cap.release()
             self.cap = None
         self._status = "OFFLINE"
+        self._reconnect_attempts = 0
         logger.info(f"[{self.camera_uid}] HLSAdapter closed.")

@@ -4,6 +4,8 @@ from typing import Optional, List
 from enum import Enum
 from datetime import datetime
 
+from ai.schemas import AIProfile
+
 
 class ProtocolType(str, Enum):
     RTSP = "RTSP"
@@ -31,6 +33,9 @@ class CameraBase(BaseModel):
     protocol_type: ProtocolType
     status: CameraStatus
     ai_enabled: bool = False
+    # Which AIOrchestrator profile runs against this camera -- docs/backend.md §12.3 fix,
+    # previously hardcoded to TRAFFIC everywhere.
+    ai_profile: AIProfile = AIProfile.TRAFFIC
 
     @field_validator("latitude")
     @classmethod

@@ -37,9 +37,9 @@ Verified live at hackathon-provided infrastructure (prd.md §0.1). This is the a
 
 ### Pre-submission technical checklist (from the hackathon's own resource page — treat as acceptance criteria)
 
-- [x] RTSP consumed over TCP, never UDP — enforced in `video/ffmpeg_runner.py` (`-rtsp_transport tcp` on both the ffprobe connection test and the ffmpeg transcode command). **Not yet confirmed on the `adapters/rtsp.py` OpenCV path** — `cv2.VideoCapture` defaults to UDP; needs `OPENCV_FFMPEG_CAPTURE_OPTIONS` set before this is true end-to-end (flagged in that file).
-- [ ] Timestamp-based timing logic (don't assume constant frame rate — the simulated middleware synchronizes recorded footage onto a common timeline) — not yet implemented; current adapters timestamp frames at local read-time (`datetime.now()`), not from stream metadata.
-- [x] Reconnection with exponential backoff on every adapter — implemented in `video/stream_manager.py` (`MAX_RESTARTS=3`, `RESTART_DELAY_SECONDS=5`) for the FFmpeg/HLS path. **Not yet implemented** on `adapters/rtsp.py`/`hls.py` directly (they report `OFFLINE`/`DEGRADED` on failure but don't self-reconnect — that's currently only the stream_manager's job).
+- [x] RTSP consumed over TCP, never UDP — enforced in `video/ffmpeg_runner.py` (`-rtsp_transport tcp`) and now also `adapters/rtsp.py` (`OPENCV_FFMPEG_CAPTURE_OPTIONS`, fixed §12.3) — both paths confirmed.
+- [ ] Timestamp-based timing logic — `adapters/rtsp.py`/`hls.py` now prefer `CAP_PROP_POS_MSEC` over pure local read-time (fixed §12.3), but this is unverified against a real feed since none exists to test against yet; live RTSP commonly doesn't report a usable position, in which case it silently falls back to local time.
+- [x] Reconnection with exponential backoff on every adapter — implemented in `video/stream_manager.py` for the FFmpeg/HLS path, and now also directly in `adapters/rtsp.py`/`hls.py` (fixed §12.3) so they no longer depend on external polling to recover from a drop.
 - [ ] Mixed codec/resolution handling — not yet tested against real heterogeneous feeds (no real cameras connected yet).
 - [x] Adapter health surfaced per-camera (protocol, last heartbeat, FPS, restart count) — `routers/adapters.py` (`/adapter/health`) and `video/stream_manager.get_stream_status()` both return this; feeds frontend.md §3.2/§3.7.
 - [ ] Error reporting capturing camera id, exact URL, client + version, UTC timestamp, and client-side error log — not yet implemented as a structured format; currently just Python `logger` calls.
@@ -48,8 +48,8 @@ Verified live at hackathon-provided infrastructure (prd.md §0.1). This is the a
 
 Every adapter normalizes its protocol into the same `NormalizedFrame` shape so the AI orchestrator (ai_pipelines.md §1) never needs to know which protocol produced a frame.
 
-- **RTSP** (`rtsp.py`, real, ported) — headless OpenCV capture, credential handling (URL kept instance-private, never returned), graceful `OFFLINE` status on failure. Primary adapter against the real ingest API (§2), pending the TCP-transport confirmation noted above.
-- **HLS** (`hls.py`, real, ported) — `.m3u8` ingestion into the same `NormalizedFrame` shape as RTSP; used for the dashboard/mobile/restricted-network path.
+- **RTSP** (`rtsp.py`, real, ported+fixed) — headless OpenCV capture, credential handling (URL kept instance-private, never returned), TCP-forced, self-reconnect-with-backoff, stream-relative timestamps (§12.3). Primary adapter against the real ingest API (§2).
+- **HLS** (`hls.py`, real, ported+fixed) — `.m3u8` ingestion into the same `NormalizedFrame` shape as RTSP, same reconnect/timestamp fixes as RTSP (§12.3); used for the dashboard/mobile/restricted-network path.
 - **ONVIF** (`onvif.py`, ported) — explicitly returns `UNSUPPORTED`, not faked. [ ] Profile S discovery/media negotiation — not yet built; no authorized ONVIF test hardware available.
 - **Vendor SDK** (`vendor.py`, ported) — explicitly returns `UNSUPPORTED`, not faked. [ ] ctypes wrapper strategy — [ ] decide which vendor to implement first once real vendor VMS access is available.
 - **Factory** (`factory.py`, real, ported+adapted) — resolves the adapter by DB-registry lookup only (legacy in-memory fallback dropped, see §0).
@@ -60,7 +60,7 @@ Every adapter normalizes its protocol into the same `NormalizedFrame` shape so t
 - Postgres, extended with **PostGIS** (currently missing — needed specifically for Model 1's GIS registry, the coverage gap-analysis report, and department/district spatial queries; suggested by the hackathon's own stack list). `backend/db/` needs a PostGIS-aware migration before the registry can serve real geo queries.
 - [ ] **Migration plan**: SQLite prototype (current `.env.example` default) → PostgreSQL/PostGIS. Not yet written.
 - Camera registry rows carry: department (one of 26), district, protocol, vendor, geolocation (plain lat/lng floats today, PostGIS point once migrated), status, and `ai_enabled`. Onboarding source (bulk/manual/API) is not yet a stored column — currently inferred only by which endpoint was called, not persisted per-row; see §12.
-- `backend/models/camera.py` is **real, ported**, backed by `backend/schemas/camera.py` (Pydantic) and `backend/services/camera_service.py` (CRUD + idempotent upsert). `alert.py`, `event.py`, `investigation.py`, `watchlist.py`, `user.py` under both `models/` and `schemas/` remain empty stubs — contrib had no equivalent to port; these need real schema design from scratch (start from `lib/types.ts`'s `Alert`/`CameraEvent` shapes on the frontend side, already decided there).
+- `backend/models/camera.py` is **real, ported** (plus a new `ai_profile` column, §12.3 fix), backed by `backend/schemas/camera.py` (Pydantic) and `backend/services/camera_service.py` (CRUD + idempotent upsert). `backend/models/watchlist.py` (`WatchlistEntry` + `WatchlistMatch`) is also **real, built §12.3**. `alert.py`, `event.py`, `investigation.py`, `user.py` under both `models/` and `schemas/` remain empty stubs — these need real schema design from scratch (start from `lib/types.ts`'s `Alert`/`CameraEvent` shapes on the frontend side, already decided there).
 - [ ] **ER diagram** — not yet drawn; only `Camera` has a real schema so far, drawing it now would be premature.
 
 ## 5. Pipelines owned by the backend
@@ -80,8 +80,8 @@ The adapter factory (`backend/adapters/factory.py`) selects RTSP/HLS/ONVIF/Vendo
 ### Pipeline 5 — Alerts & investigation
 Alert severity scoring (consumes AI orchestrator + intelligence-correlation output — ai_pipelines.md §3), delivery (web only — no mobile app per prd.md §3 non-goals, so this is resolved, not open), and investigation case-file CRUD backing frontend.md §3.5.
 - [x] Live event delivery — `routers/streams.py`'s `/api/streams/events/stream` SSE endpoint + `intelligence/alert_engine.py` pub/sub, wired to the real `AIOrchestrator` output (plates/persons/anomalies → `NormalizedEvent` → `alert_engine.process_event()`).
-- [ ] **Watchlist matching is currently a single hardcoded plate string** in `alert_engine.py` (`"GJ05XX7821"`) — a placeholder from the original migration, not real DB-backed matching. `intelligence/watchlist_matcher.py` is still an empty stub; needs `models/watchlist.py` to exist first.
-- [ ] Severity scoring rubric — not yet defined; must map to the CRITICAL/HIGH/MEDIUM/LOW/INFO badges in frontend.md §3.3.
+- [x] **Watchlist matching** — real DB lookup via `intelligence/watchlist_matcher.py` against `models/watchlist.py`, exact match only (fuzzy matching deliberately deferred, see that file's docstring). Fixed §12.3, verified in `tests/test_watchlists.py`.
+- [ ] Severity scoring rubric — watchlist-triggered alerts now use the matched entry's real `risk_level` (§12.3) instead of a hardcoded "CRITICAL", but there's still no rubric for non-watchlist events (anomalies, plain detections) — must map to the CRITICAL/HIGH/MEDIUM/LOW/INFO badges in frontend.md §3.3.
 - [ ] Alert persistence — events are broadcast live via SSE but never written to a DB table (`models/alert.py` doesn't exist yet), so there is no alert history/query API yet, only the live stream.
 - [ ] Case-file CRUD + evidence attachment backing the Investigations detail tabs — `models/investigation.py` and `routers/investigations.py` are still empty stubs.
 
@@ -105,9 +105,11 @@ Alert severity scoring (consumes AI orchestrator + intelligence-correlation outp
 | GET | `/api/ai/config` | `ai.py` | active profiles |
 | POST | `/api/ai/analyze-frame` | `ai.py` | test endpoint, synthesizes a dummy frame — exercises the orchestrator without a camera |
 | GET | `/api/health/` | `health.py` | CPU/memory/ffmpeg-availability |
+| GET | `/api/watchlists/` | `watchlists.py` | list, filterable by category/active_only; **built §12.3** |
+| POST | `/api/watchlists/` | `watchlists.py` | create an entry; **built §12.3** |
 | GET | `/` | `main.py` | liveness |
 
-**Not implemented — files are still empty placeholders, deliberately not included in `main.py`** (including an unimplemented router would break startup): `auth.py`, `alerts.py`, `watchlists.py`, `investigations.py`. Building any of these means: write the router, populate its `models/*.py` + `schemas/*.py` pair, then add the `app.include_router(...)` line in `main.py`.
+**Not implemented — files are still empty placeholders, deliberately not included in `main.py`** (including an unimplemented router would break startup): `auth.py`, `alerts.py`, `investigations.py`. Building any of these means: write the router, populate its `models/*.py` + `schemas/*.py` pair, then add the `app.include_router(...)` line in `main.py`. (`watchlists.py` no longer belongs on this list — CSV bulk import is its one remaining gap, tracked in §12.4.)
 
 ## 7. Security & privacy posture
 
@@ -124,7 +126,8 @@ Ported from `contrib/aneesh/backend/`: these are live-server integration tests (
 - [x] `tests/test_cameras.py` — camera CRUD, duplicate rejection, CSV/JSON bulk import (including per-row error reporting and idempotency).
 - [x] `tests/test_adapters.py` — factory resolution across HLS/ONVIF/Vendor SDK, 404 on missing camera. (The original's legacy-registry test case was dropped along with that module, §0.)
 - [x] `tests/test_ai.py` — orchestrator profile gating (TRAFFIC vs SECURITY output shape), invalid-profile 422.
-- [ ] `tests/test_alerts.py` — still an empty stub; nothing to test yet since alerts aren't persisted (§5 Pipeline 5).
+- [x] `tests/test_watchlists.py` (new, §12.3) — creates a real watchlist entry, feeds matching/non-matching events through the real in-process `AlertEngine`, confirms a real watchlist alert (correct risk level/category) vs. a plain event, and confirms `match_count` genuinely increments.
+- [ ] `tests/test_alerts.py` — still an empty stub; nothing to test yet since alerts themselves still aren't persisted (§5 Pipeline 5) — watchlist *matches* now are (§12.3).
 - [ ] Convert these to pytest (currently plain scripts with `assert` + `print`, run manually against a live server) so they run in CI.
 - Minimum bar before the hackathon-day live test: the Investigations map-trace flow (frontend.md §3.5) has an end-to-end test against at least one real ingest-API camera, not only mocked data — this is the graded functional test, it cannot be mock-only. **Not yet possible** — investigations aren't built (§5), and no real ingest-API host is configured (`INGEST_API_BASE_URL` unset, `core/config.py`).
 
@@ -179,22 +182,22 @@ Full status as of the `contrib/aneesh/` port, 2026-09-12. **Done** = ported and 
 - [x] Integration test suite ported and adapted — `tests/test_cameras.py`, `test_adapters.py`, `test_ai.py`
 - [x] `requirements.txt` pinned
 
-### 12.3 Fix needed (real code, known gap)
+### 12.3 Fixed (2026-09-12, verified against the running server + tests)
 
-- [ ] `adapters/rtsp.py` — confirm `cv2.VideoCapture` is forced to TCP transport (currently only `video/ffmpeg_runner.py`'s path is confirmed TCP); OpenCV defaults to UDP
-- [ ] `adapters/rtsp.py`/`hls.py` — no self-reconnect-with-backoff (only the FFmpeg/`stream_manager` path has this); calling code must poll and restart
-- [ ] Frame timestamps are local read-time (`datetime.now()`), not derived from the stream's own timing — needed for docs/backend.md §2 checklist item 2 (the hackathon's simulated feeds run on a synchronized timeline, not real-time)
-- [ ] `intelligence/alert_engine.py` — watchlist check is a single hardcoded plate string, not a real DB lookup (§5 Pipeline 5)
-- [ ] `routers/streams.py`'s AI pipeline defaults every camera to the TRAFFIC profile — no per-camera profile selection wired to frontend.md §3.8 yet
-- [ ] Pydantic v1-style `@validator` in the original source was upgraded to v2 `@field_validator` during the port (`schemas/camera.py`) — double-check no other v1-isms were missed if more of contrib gets ported later
+- [x] `adapters/rtsp.py` — TCP transport now forced via `OPENCV_FFMPEG_CAPTURE_OPTIONS` (set once at module import). OpenCV's default is UDP; this closes the gap for the OpenCV capture path (the FFmpeg/`stream_manager` path was already TCP).
+- [x] `adapters/rtsp.py`/`hls.py` — both now self-reconnect with capped exponential backoff (`MAX_RECONNECT_ATTEMPTS=3`, mirrors `video/stream_manager.py`'s pattern) on connect *and* read failure, instead of just reporting `DEGRADED`/`OFFLINE` and waiting for external polling to restart them.
+- [x] Frame timestamps now prefer the stream's own reported position (`CAP_PROP_POS_MSEC`, anchored to connect-time wall clock) over pure `datetime.now()` per read — **caveat, still honest**: unverified against a real feed, since none exists to test against yet; live RTSP backends commonly report 0/unsupported for this property, in which case it silently falls back to local time exactly as before. See `adapters/rtsp.py`'s `_resolve_timestamp()` docstring.
+- [x] `intelligence/alert_engine.py` — real DB-backed watchlist matching. Built `models/watchlist.py` (`WatchlistEntry` + `WatchlistMatch`, match count derived from match rows rather than a stored counter), `schemas/watchlist.py`, `services/watchlist_service.py`, `intelligence/watchlist_matcher.py` (exact match only — see that file's docstring for why fuzzy matching isn't implemented yet), and `routers/watchlists.py` (list + create, wired into `main.py`). Verified end-to-end in `tests/test_watchlists.py`: a matching plate produces a real watchlist alert with the entry's actual risk level/category, a non-matching plate produces a plain event, and `match_count` genuinely increments. Caught and fixed a real bug in the process — `_create_watchlist_alert` was reading ORM attributes after the session that fetched them had committed and closed (`DetachedInstanceError`); fixed by snapshotting the needed fields before the commit.
+- [x] `routers/streams.py`'s AI pipeline now reads `Camera.ai_profile` per camera (new column, defaults to `TRAFFIC`, backs frontend.md §3.8's per-camera profile selector) instead of hardcoding `TRAFFIC` for every camera. Falls back to `TRAFFIC` with a logged warning if a camera somehow has an invalid value.
+- [x] Pydantic v1-style patterns audited across all of `backend/` (`@validator`, `.dict()`, `.json()` on a model, `orm_mode`, `class Config:`, `@root_validator`) — nothing found beyond the one already-fixed `schemas/camera.py` validator. No further action needed unless more of `contrib/aneesh/` gets ported later.
 
 ### 12.4 Not built (empty stubs, no code exists to fix)
 
-- [ ] `models/`, `schemas/` for `alert.py`, `event.py`, `investigation.py`, `watchlist.py`, `user.py` — design these against `lib/types.ts`'s already-decided frontend shapes (`Alert`, `CameraEvent`, etc.) rather than from scratch
-- [ ] `routers/auth.py`, `alerts.py`, `investigations.py`, `watchlists.py` — and their `main.py` wiring, once the models above exist
-- [ ] Alert persistence (events broadcast live via SSE, never written to a DB table) + severity scoring rubric (§5 Pipeline 5)
+- [ ] `models/`, `schemas/` for `alert.py`, `event.py`, `investigation.py`, `user.py` — design these against `lib/types.ts`'s already-decided frontend shapes (`Alert`, `CameraEvent`, etc.) rather than from scratch. (`watchlist.py` is done under both — §12.3.)
+- [ ] `routers/auth.py`, `alerts.py`, `investigations.py` — and their `main.py` wiring, once the models above exist. (`watchlists.py` is done — §12.3, list+create only, CSV bulk import still missing.)
+- [ ] Alert persistence (events broadcast live via SSE, never written to a DB table) + severity scoring rubric (§5 Pipeline 5) — watchlist *matches* now persist (§12.3), but the alert record itself (severity, acknowledge/escalate state, frontend.md §3.3) still doesn't
 - [ ] Case-file CRUD + evidence attachment for Investigations (§5 Pipeline 5)
-- [ ] `intelligence/entity_graph.py`, `watchlist_matcher.py` — real DB-backed watchlist matching and cross-camera entity correlation (ai_pipelines.md §4)
+- [ ] `intelligence/entity_graph.py` — cross-camera entity correlation (ai_pipelines.md §4). (`watchlist_matcher.py` is done for exact plate matches — §12.3; fuzzy matching for OCR-noisy reads is a separate, deliberately-deferred gap, see that file's docstring.)
 - [ ] `/api/ingest` catalogue-sync job (§2) — nothing yet calls the hackathon's real endpoint; the generic JSON bulk-import endpoint could receive its output once built
 - [ ] PostGIS migration (§4) — camera lat/lng are plain floats on SQLite today
 - [ ] Gap-analysis query (coverage by district × department) backing frontend.md §3.1/§3.7

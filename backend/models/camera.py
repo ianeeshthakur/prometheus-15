@@ -24,6 +24,12 @@ class Camera(Base):
     protocol_type = Column(String, nullable=False)  # RTSP, HLS, ONVIF, VENDOR_SDK
     status = Column(String, nullable=False)  # ACTIVE, INACTIVE, DEGRADED, OFFLINE
     ai_enabled = Column(Boolean, default=False)
+    # Which AIOrchestrator profile runs against this camera's frames -- TRAFFIC,
+    # SECURITY, or RTO (ai/schemas.py AIProfile). Backs the frontend.md §3.8 "AI &
+    # datasets" per-camera profile selector; consumed by routers/streams.py's AI
+    # pipeline. Fixed during docs/backend.md §12.3 cleanup -- previously every camera
+    # was hardcoded to TRAFFIC.
+    ai_profile = Column(String, nullable=False, default="TRAFFIC")
 
     # Internal connection info, never exposed to frontend GET APIs directly
     # (see core/security.py -- CameraResponse simply omits this field).

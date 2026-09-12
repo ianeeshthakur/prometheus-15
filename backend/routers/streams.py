@@ -9,8 +9,9 @@
 # must not block the event loop. The legacy in-memory camera_registry lookup is replaced
 # with the DB-backed registry, consistent with adapters/factory.py's port.
 #
-# Default AI profile is TRAFFIC for every camera -- per-camera profile selection
-# (docs/frontend.md §3.8 "AI & datasets" tab) is not wired yet; see docs/backend.md §12.
+# AI profile is read per-camera from Camera.ai_profile (docs/frontend.md §3.8 "AI &
+# datasets" tab) -- fixed during docs/backend.md §12.3 cleanup; previously hardcoded to
+# TRAFFIC for every camera regardless of what was stored.
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from sse_starlette.sse import EventSourceResponse
 import asyncio
@@ -81,7 +82,12 @@ async def _run_ai_pipeline(camera_id: str):
     finally:
         db.close()
 
-    orchestrator = _orchestrators[AIProfile.TRAFFIC]
+    try:
+        profile = AIProfile(camera.ai_profile)
+    except ValueError:
+        logger.warning(f"[{camera_id}] Unknown ai_profile {camera.ai_profile!r} on camera, defaulting to TRAFFIC")
+        profile = AIProfile.TRAFFIC
+    orchestrator = _orchestrators[profile]
 
     connected = await asyncio.to_thread(adapter.connect)
     if not connected:
