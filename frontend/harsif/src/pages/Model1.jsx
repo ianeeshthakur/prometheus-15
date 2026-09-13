@@ -1,11 +1,8 @@
 import React from 'react';
+import CameraRegistry from './CameraRegistry';
 
 function Model1() {
-  return (
-    <div>
-      <h1>Model 1: Registry & GIS</h1>
-    </div>
-  );
+  return <CameraRegistry />;
 }
 
 export default Model1;

@@ -1,0 +1,132 @@
+/* ==========================================================================
+   StatusBadge.css - Clean Pill-Shaped Status Badge with Gentle Pulse
+   ========================================================================== */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 9999px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  user-select: none;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+/* Badge Sizes */
+.status-badge-sm {
+  font-size: 0.68rem;
+  padding: 2px 7px;
+}
+
+.status-badge-md {
+  font-size: 0.74rem;
+  padding: 3px 9px;
+}
+
+.status-badge-lg {
+  font-size: 0.82rem;
+  padding: 4px 11px;
+}
+
+/* Status Dot */
+.status-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.status-badge-sm .status-badge-dot {
+  width: 5px;
+  height: 5px;
+}
+
+.status-badge-lg .status-badge-dot {
+  width: 7px;
+  height: 7px;
+}
+
+/* Gentle Pulse Animation ONLY for Online / Active */
+.status-badge-dot.pulse {
+  animation: gentleStatusPulse 2s ease-in-out infinite;
+}
+
+.status-badge-dot.pulse::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  opacity: 0.6;
+  animation: gentlePingRing 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+@keyframes gentleStatusPulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.22);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.85;
+  }
+}
+
+@keyframes gentlePingRing {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.8;
+  }
+  75%, 100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+/* Color Variants */
+
+/* Green: Online / Active / Operational / Healthy */
+.status-badge-green {
+  background-color: rgba(22, 163, 74, 0.09);
+  color: #15803d;
+  border-color: rgba(22, 163, 74, 0.22);
+}
+
+/* Gray: Offline / Inactive / Disconnected / Disabled */
+.status-badge-gray {
+  background-color: rgba(100, 116, 139, 0.1);
+  color: #475569;
+  border-color: rgba(100, 116, 139, 0.22);
+}
+
+/* Amber: Maintenance / Degraded / Warning / Standby / Pending */
+.status-badge-amber {
+  background-color: rgba(217, 119, 6, 0.1);
+  color: #b45309;
+  border-color: rgba(217, 119, 6, 0.24);
+}
+
+/* Red: Alert / Critical / Error / Failed */
+.status-badge-red {
+  background-color: rgba(220, 38, 38, 0.09);
+  color: #b91c1c;
+  border-color: rgba(220, 38, 38, 0.22);
+}
+
+/* Blue: Informational / Idle */
+.status-badge-blue {
+  background-color: rgba(2, 132, 199, 0.09);
+  color: #0369a1;
+  border-color: rgba(2, 132, 199, 0.22);
+}

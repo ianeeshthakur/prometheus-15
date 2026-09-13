@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, LayersControl, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { CAMERAS, DEPARTMENT_COLORS, STATUS_COLORS } from '../data/cameras';
+import { CAMERAS, DEPARTMENT_COLORS, STATUS_COLORS, DISTRICT_CENTERS } from '../data/cameras';
 import './CameraMap.css';
 
 // Fix Leaflet default icon path issues in bundlers
@@ -17,14 +17,15 @@ L.Icon.Default.mergeOptions({
 const iconCache = new Map();
 
 function getCameraIcon(camera) {
-  const cacheKey = `${camera.id}-${camera.department}-${camera.status}`;
+  const statusKey = (camera.status || 'active').toLowerCase();
+  const cacheKey = `${camera.id}-${camera.department}-${statusKey}`;
   if (iconCache.has(cacheKey)) {
     return iconCache.get(cacheKey);
   }
 
   const deptColor = DEPARTMENT_COLORS[camera.department] || '#0284c7';
-  const isAlert = camera.status === 'alert';
-  const isOffline = camera.status === 'offline';
+  const isAlert = statusKey === 'alert';
+  const isOffline = statusKey === 'offline';
 
   const html = `
     <div class="camera-marker-pin ${isAlert ? 'marker-alert' : ''} ${isOffline ? 'marker-offline' : ''}" style="--marker-color: ${deptColor}">
@@ -60,7 +61,6 @@ function playExpandSound() {
     const gain = ctx.createGain();
 
     osc.type = 'sine';
-    // Ascending soft chime: 320Hz -> 680Hz
     osc.frequency.setValueAtTime(320, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(680, ctx.currentTime + 0.22);
 
@@ -84,7 +84,6 @@ function playCollapseSound() {
     const gain = ctx.createGain();
 
     osc.type = 'sine';
-    // Descending soft chime: 580Hz -> 280Hz
     osc.frequency.setValueAtTime(580, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(280, ctx.currentTime + 0.22);
 
@@ -101,11 +100,26 @@ function playCollapseSound() {
   }
 }
 
+// Helper to reliably infer Gujarat district if not explicitly populated
+function getCameraDistrict(cam) {
+  if (cam.district) return cam.district;
+  if (!cam.id) return 'Ahmedabad';
+  if (cam.id.startsWith('CAM-SRT')) return 'Surat';
+  if (cam.id.startsWith('CAM-VDR')) return 'Vadodara';
+  if (cam.id.startsWith('CAM-GNR')) return 'Gandhinagar';
+  if (cam.id.startsWith('CAM-RJK')) return 'Rajkot';
+  if (cam.id.startsWith('CAM-BHV')) return 'Bhavnagar';
+  if (cam.id.startsWith('CAM-JMN')) return 'Jamnagar';
+  if (cam.id.startsWith('CAM-KCH')) return 'Kutch';
+  return 'Ahmedabad';
+}
+
 // Helper component to listen to clicks on the map background
-function MapClickHandler({ isFullscreen, onExpand }) {
+function MapClickHandler({ isFullscreen, isDrawerOpen, onExpand }) {
   useMapEvents({
     click: () => {
-      if (!isFullscreen) {
+      // Only auto-expand if neither fullscreen nor drawer is currently open
+      if (!isFullscreen && !isDrawerOpen && onExpand) {
         onExpand();
       }
     },
@@ -126,9 +140,63 @@ function MapResizeHandler({ isFullscreen }) {
   return null;
 }
 
+// Helper component to fly to new district center or camera focus coordinates
+function MapViewController({ center, zoom, flyTarget }) {
+  const map = useMap();
+  const initialMount = useRef(true);
+
+  // Smooth fly animation on district selection changes
+  useEffect(() => {
+    if (initialMount.current) {
+      initialMount.current = false;
+      return;
+    }
+    if (center && map) {
+      try {
+        map.flyTo(center, zoom, {
+          duration: 1.15,
+          easeLinearity: 0.25,
+        });
+      } catch {
+        map.setView(center, zoom);
+      }
+    }
+  }, [center, zoom, map]);
+
+  // High-zoom pin-point fly when a camera is targeted for inspection
+  useEffect(() => {
+    if (flyTarget && map) {
+      try {
+        map.flyTo([flyTarget.lat, flyTarget.lng], 16, {
+          duration: 1.25,
+          easeLinearity: 0.2,
+        });
+      } catch {
+        map.setView([flyTarget.lat, flyTarget.lng], 16);
+      }
+    }
+  }, [flyTarget, map]);
+
+  return null;
+}
+
 const CameraMap = React.memo(function CameraMap() {
+  const [selectedDistrict, setSelectedDistrict] = useState('All');
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedCamera, setSelectedCamera] = useState(null);
+  const [cameraFlyTarget, setCameraFlyTarget] = useState(null);
+  const [toastMessage, setToastMessage] = useState(null);
+  const [simulatedTime, setSimulatedTime] = useState(new Date().toLocaleTimeString());
+
+  // Update HUD simulated video timecode
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSimulatedTime(new Date().toLocaleTimeString());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleExpand = useCallback(() => {
     if (!isFullscreen) {
@@ -144,66 +212,666 @@ const CameraMap = React.memo(function CameraMap() {
     }
   }, [isFullscreen]);
 
-  // Pressing Escape exits fullscreen
+  const showToast = useCallback((msg) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((current) => (current === msg ? null : current));
+    }, 2800);
+  }, []);
+
+  // Keyboard navigation: Escape closes drawer or exits fullscreen
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isFullscreen) {
-        handleCollapse();
+      if (e.key === 'Escape') {
+        if (isDrawerOpen) {
+          setIsDrawerOpen(false);
+        } else if (isFullscreen) {
+          handleCollapse();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen, handleCollapse]);
+  }, [isDrawerOpen, isFullscreen, handleCollapse]);
 
-  const filteredCameras = useMemo(() => {
+  // Sibling cameras in current district for switcher
+  const districtCameras = useMemo(() => {
+    if (selectedDistrict === 'All') return CAMERAS;
     return CAMERAS.filter((cam) => {
+      const dist = getCameraDistrict(cam);
+      return dist.toLowerCase() === selectedDistrict.toLowerCase();
+    });
+  }, [selectedDistrict]);
+
+  // Filtered cameras by both district and department
+  const filteredCameras = useMemo(() => {
+    return districtCameras.filter((cam) => {
       const matchDept = selectedDept === 'ALL' || cam.department === selectedDept;
       return matchDept;
     });
-  }, [selectedDept]);
+  }, [districtCameras, selectedDept]);
 
-  const activeCount = CAMERAS.filter((c) => c.status === 'active').length;
-  const alertCount = CAMERAS.filter((c) => c.status === 'alert').length;
-  const offlineCount = CAMERAS.filter((c) => c.status === 'offline').length;
-  const coveragePct = ((activeCount / CAMERAS.length) * 100).toFixed(1);
+  // Available unique departments across active dataset
+  const availableDepartments = useMemo(() => {
+    const depts = new Set();
+    CAMERAS.forEach((c) => {
+      if (c.department) depts.add(c.department);
+    });
+    return Array.from(depts);
+  }, []);
+
+  // Automatically keep selectedCamera valid
+  useEffect(() => {
+    if (!selectedCamera && filteredCameras.length > 0) {
+      setSelectedCamera(filteredCameras[0]);
+    }
+  }, [selectedCamera, filteredCameras]);
+
+  const activeCount = filteredCameras.filter((c) => c.status === 'active').length;
+  const alertCount = filteredCameras.filter((c) => c.status === 'alert').length;
+  const offlineCount = filteredCameras.filter((c) => c.status === 'offline').length;
+  const coveragePct = filteredCameras.length > 0
+    ? ((activeCount / filteredCameras.length) * 100).toFixed(1)
+    : '0.0';
+
+  const activeDistrictInfo = DISTRICT_CENTERS[selectedDistrict] || DISTRICT_CENTERS.All;
 
   return (
     <div className={`camera-map-card ${isFullscreen ? 'is-fullscreen' : ''}`}>
-      {/* Map Header with Filters & Expand/Close Button */}
+      {/* Scoped styles for Camera Detail Drawer & Micro-UI enhancements */}
+      <style>{`
+        /* Camera Detail Drawer */
+        .cam-detail-drawer {
+          position: absolute;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          width: 420px;
+          max-width: 95vw;
+          background-color: var(--bg-primary, #ffffff);
+          border-left: 1px solid var(--border-color, #e2e8f0);
+          box-shadow: -8px 0 30px rgba(0, 0, 0, 0.16);
+          z-index: 1000;
+          display: flex;
+          flex-direction: column;
+          transform: translateX(100%);
+          transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+          pointer-events: none;
+          overflow: hidden;
+        }
+
+        .cam-detail-drawer.is-open {
+          transform: translateX(0);
+          pointer-events: auto;
+        }
+
+        .cam-drawer-header {
+          padding: 14px 18px;
+          border-bottom: 1px solid var(--border-color, #e2e8f0);
+          background-color: var(--bg-secondary, #f8fafc);
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          position: relative;
+        }
+
+        .cam-drawer-top-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .cam-drawer-category {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.68rem;
+          font-weight: 700;
+          color: var(--accent, #0284c7);
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
+        .cam-drawer-close-btn {
+          background: transparent;
+          border: 1px solid var(--border-color, #e2e8f0);
+          border-radius: 6px;
+          color: var(--text-secondary, #64748b);
+          cursor: pointer;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
+        }
+
+        .cam-drawer-close-btn:hover {
+          background-color: #fee2e2;
+          color: #dc2626;
+          border-color: #fca5a5;
+        }
+
+        .cam-drawer-title-box {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .cam-drawer-title {
+          font-size: 1.05rem;
+          font-weight: 700;
+          color: var(--text-primary, #0f172a);
+          margin: 0;
+          line-height: 1.3;
+        }
+
+        .cam-drawer-meta-badges {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+          margin-top: 4px;
+        }
+
+        .cam-badge-id {
+          font-size: 0.72rem;
+          font-weight: 700;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          background-color: var(--bg-primary, #ffffff);
+          border: 1px solid var(--border-color, #e2e8f0);
+          padding: 2px 7px;
+          border-radius: 4px;
+          color: var(--text-secondary, #475569);
+        }
+
+        .cam-badge-status {
+          font-size: 0.68rem;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .cam-badge-status.active {
+          background-color: rgba(22, 163, 74, 0.12);
+          color: #16a34a;
+        }
+
+        .cam-badge-status.alert {
+          background-color: rgba(220, 38, 38, 0.12);
+          color: #dc2626;
+        }
+
+        .cam-badge-status.offline {
+          background-color: rgba(148, 163, 184, 0.16);
+          color: #64748b;
+        }
+
+        .cam-badge-dept {
+          font-size: 0.68rem;
+          font-weight: 700;
+          color: #ffffff;
+          padding: 2px 8px;
+          border-radius: 4px;
+        }
+
+        /* Drawer Body Scroll Area */
+        .cam-drawer-body {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        /* Video Player Simulation */
+        .cam-video-viewport {
+          position: relative;
+          aspect-ratio: 16 / 9;
+          background-color: #090d16;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8), 0 4px 12px rgba(0, 0, 0, 0.15);
+          border: 1px solid #1e293b;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          padding: 10px;
+        }
+
+        .cam-video-grid-pattern {
+          position: absolute;
+          inset: 0;
+          background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+          background-size: 20px 20px;
+          pointer-events: none;
+        }
+
+        .cam-video-reticle {
+          position: absolute;
+          inset: 12px;
+          border: 1px dashed rgba(2, 132, 199, 0.25);
+          pointer-events: none;
+        }
+
+        .cam-video-reticle::before,
+        .cam-video-reticle::after {
+          content: '';
+          position: absolute;
+          width: 10px;
+          height: 10px;
+          border-color: #38bdf8;
+          pointer-events: none;
+        }
+        .cam-video-reticle::before {
+          top: -1px;
+          left: -1px;
+          border-top: 2px solid;
+          border-left: 2px solid;
+        }
+        .cam-video-reticle::after {
+          bottom: -1px;
+          right: -1px;
+          border-bottom: 2px solid;
+          border-right: 2px solid;
+        }
+
+        /* Simulated AI Bounding Box */
+        .cam-ai-bbox {
+          position: absolute;
+          top: 24%;
+          left: 30%;
+          width: 40%;
+          height: 48%;
+          border: 1.5px solid #0284c7;
+          background: rgba(2, 132, 199, 0.06);
+          pointer-events: none;
+          border-radius: 2px;
+        }
+
+        .cam-ai-bbox.alert-bbox {
+          border-color: #ef4444;
+          background: rgba(239, 68, 68, 0.08);
+        }
+
+        .cam-ai-bbox-tag {
+          position: absolute;
+          top: -18px;
+          left: -1px;
+          background-color: #0284c7;
+          color: #ffffff;
+          font-size: 0.62rem;
+          font-weight: 700;
+          padding: 1px 5px;
+          border-radius: 2px;
+          letter-spacing: 0.03em;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        .cam-ai-bbox.alert-bbox .cam-ai-bbox-tag {
+          background-color: #ef4444;
+        }
+
+        .cam-video-top-hud {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          z-index: 2;
+          font-size: 0.68rem;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        .cam-live-indicator {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          background: rgba(0, 0, 0, 0.55);
+          padding: 2px 7px;
+          border-radius: 4px;
+          color: #ffffff;
+          font-weight: 700;
+        }
+
+        .cam-rec-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background-color: #ef4444;
+          animation: pulseRed 1.2s infinite;
+        }
+
+        @keyframes pulseRed {
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.3; transform: scale(0.85); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+
+        .cam-res-tag {
+          background: rgba(0, 0, 0, 0.55);
+          color: #38bdf8;
+          padding: 2px 7px;
+          border-radius: 4px;
+          font-weight: 700;
+        }
+
+        .cam-video-bottom-hud {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          z-index: 2;
+          font-size: 0.64rem;
+          color: #94a3b8;
+          background: rgba(0, 0, 0, 0.65);
+          backdrop-filter: blur(4px);
+          padding: 3px 8px;
+          border-radius: 4px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        /* Video Controls Toolbar */
+        .cam-video-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .cam-tool-btn {
+          flex: 1;
+          background-color: var(--bg-secondary, #f8fafc);
+          border: 1px solid var(--border-color, #e2e8f0);
+          border-radius: 6px;
+          padding: 6px 10px;
+          font-size: 0.74rem;
+          font-weight: 600;
+          color: var(--text-primary, #0f172a);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 5px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .cam-tool-btn:hover {
+          background-color: var(--accent, #0284c7);
+          color: #ffffff;
+          border-color: var(--accent, #0284c7);
+        }
+
+        .cam-tool-btn.primary {
+          background-color: var(--accent, #0284c7);
+          color: #ffffff;
+          border-color: var(--accent, #0284c7);
+        }
+
+        .cam-tool-btn.primary:hover {
+          opacity: 0.9;
+        }
+
+        /* Telemetry Grid */
+        .cam-telemetry-section {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .cam-section-title {
+          font-size: 0.76rem;
+          font-weight: 700;
+          color: var(--text-secondary, #64748b);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin: 0;
+        }
+
+        .cam-telemetry-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+
+        .cam-telemetry-tile {
+          background-color: var(--bg-secondary, #f8fafc);
+          border: 1px solid var(--border-color, #e2e8f0);
+          border-radius: 6px;
+          padding: 8px 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .cam-tile-label {
+          font-size: 0.68rem;
+          color: var(--text-secondary, #64748b);
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+          font-weight: 600;
+        }
+
+        .cam-tile-value {
+          font-size: 0.8rem;
+          font-weight: 700;
+          color: var(--text-primary, #0f172a);
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        /* Incident / Status Alert Banner */
+        .cam-status-banner {
+          border-radius: 8px;
+          padding: 10px 14px;
+          font-size: 0.78rem;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          border: 1px solid;
+        }
+
+        .cam-status-banner.alert {
+          background-color: rgba(220, 38, 38, 0.08);
+          border-color: rgba(220, 38, 38, 0.25);
+          color: #991b1b;
+        }
+
+        .cam-status-banner.active {
+          background-color: rgba(22, 163, 74, 0.08);
+          border-color: rgba(22, 163, 74, 0.25);
+          color: #166534;
+        }
+
+        .cam-status-banner.offline {
+          background-color: rgba(148, 163, 184, 0.12);
+          border-color: rgba(148, 163, 184, 0.3);
+          color: #475569;
+        }
+
+        .cam-banner-heading {
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        /* Sibling Node Selector */
+        .cam-sibling-section {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          border-top: 1px solid var(--border-color, #e2e8f0);
+          padding-top: 14px;
+        }
+
+        .cam-sibling-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          max-height: 180px;
+          overflow-y: auto;
+          padding-right: 4px;
+        }
+
+        .cam-sibling-card {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 6px 10px;
+          background-color: var(--bg-secondary, #f8fafc);
+          border: 1px solid var(--border-color, #e2e8f0);
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          font-size: 0.76rem;
+          text-align: left;
+        }
+
+        .cam-sibling-card:hover {
+          background-color: var(--bg-primary, #ffffff);
+          border-color: var(--accent, #0284c7);
+        }
+
+        .cam-sibling-card.active {
+          border-color: var(--accent, #0284c7);
+          background-color: rgba(2, 132, 199, 0.06);
+        }
+
+        .cam-sibling-info {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+        }
+
+        .cam-sibling-id {
+          font-weight: 700;
+          color: var(--text-primary, #0f172a);
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        .cam-sibling-name {
+          color: var(--text-secondary, #64748b);
+          font-size: 0.7rem;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 240px;
+        }
+
+        /* Mini Toast inside Drawer */
+        .cam-drawer-toast {
+          position: absolute;
+          bottom: 16px;
+          left: 16px;
+          right: 16px;
+          background-color: #0f172a;
+          color: #f8fafc;
+          padding: 8px 14px;
+          border-radius: 6px;
+          font-size: 0.76rem;
+          font-weight: 600;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          animation: toastFadeIn 0.25s ease-out;
+          z-index: 1010;
+        }
+
+        @keyframes toastFadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
+      {/* Map Header with Filters, District Selector & Actions */}
       <div className="camera-map-header">
         <div className="map-header-left">
           <div className="map-title-row">
             <h2 className="map-card-title">Surveillance GIS Matrix</h2>
+            <span className="statewide-pill">STATEWIDE GUJARAT</span>
             {isFullscreen && (
               <span className="fullscreen-active-badge">FULLSCREEN COMMAND MODE</span>
             )}
           </div>
-          <p className="map-card-subtitle">Ahmedabad Metropolitan Command & Telemetry Grid</p>
+          <p className="map-card-subtitle">
+            {selectedDistrict === 'All'
+              ? `Gujarat Statewide Multi-District GIS Grid · ${CAMERAS.length} Nodes Online`
+              : `${activeDistrictInfo.name} Command & Telemetry Grid · ${districtCameras.length} Nodes`}
+          </p>
         </div>
 
         <div className="map-header-center">
+          {/* District Selector Chips */}
+          <div className="district-filter-row">
+            <span className="filter-label">District:</span>
+            {Object.keys(DISTRICT_CENTERS).map((dist) => {
+              const isActive = selectedDistrict === dist;
+              return (
+                <button
+                  key={dist}
+                  type="button"
+                  className={`filter-chip district-chip ${isActive ? 'active' : ''}`}
+                  onClick={() => setSelectedDistrict(dist)}
+                >
+                  {dist === 'All' ? 'All Gujarat' : dist}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Department Filter Chips */}
           <div className="map-header-filters">
+            <span className="filter-label">Dept:</span>
             <button
               type="button"
               className={`filter-chip ${selectedDept === 'ALL' ? 'active' : ''}`}
               onClick={() => setSelectedDept('ALL')}
             >
-              All ({CAMERAS.length})
+              All ({districtCameras.length})
             </button>
-            {['Police', 'Traffic', 'Municipal', 'Food', 'Sanitation', 'Health'].map((dept) => (
-              <button
-                key={dept}
-                type="button"
-                className={`filter-chip ${selectedDept === dept ? 'active' : ''}`}
-                onClick={() => setSelectedDept(dept)}
-              >
-                {dept}
-              </button>
-            ))}
+            {availableDepartments.map((dept) => {
+              const count = districtCameras.filter((c) => c.department === dept).length;
+              if (count === 0 && selectedDistrict !== 'All') return null;
+              return (
+                <button
+                  key={dept}
+                  type="button"
+                  className={`filter-chip ${selectedDept === dept ? 'active' : ''}`}
+                  onClick={() => setSelectedDept(dept)}
+                >
+                  {dept} {count > 0 ? `(${count})` : ''}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div className="map-header-actions">
+          {/* Toggle Camera Detail Drawer Button */}
+          <button
+            type="button"
+            className={`map-expand-btn ${isDrawerOpen ? 'active-fullscreen' : ''}`}
+            onClick={() => {
+              if (!isDrawerOpen && !selectedCamera && filteredCameras.length > 0) {
+                setSelectedCamera(filteredCameras[0]);
+              }
+              setIsDrawerOpen(!isDrawerOpen);
+            }}
+            title={isDrawerOpen ? 'Close Telemetry Drawer' : 'Open Camera Telemetry Drawer'}
+            aria-label="Toggle Camera Drawer"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+            <span>{isDrawerOpen ? 'Close Drawer' : 'Camera Feed Drawer'}</span>
+          </button>
+
+          {/* Fullscreen Expand / Close Button */}
           <button
             type="button"
             className={`map-expand-btn ${isFullscreen ? 'active-fullscreen' : ''}`}
@@ -234,9 +902,9 @@ const CameraMap = React.memo(function CameraMap() {
         </div>
       </div>
 
-      {/* Real Interactive Leaflet Map Container */}
+      {/* Interactive Leaflet Map Container Wrapper */}
       <div className={`leaflet-map-wrapper ${!isFullscreen ? 'clickable-canvas' : ''}`}>
-        {/* Step C: Laser scanline beam sweeping down once on load */}
+        {/* Laser scanline beam sweeping down once on load */}
         <div className="map-scan-beam" />
 
         {/* Floating Stats Mini-Overlay on Top-Left */}
@@ -249,8 +917,14 @@ const CameraMap = React.memo(function CameraMap() {
             </span>
           </div>
           <div className="floating-stat-row">
+            <span className="floating-stat-label">Jurisdiction</span>
+            <span className="floating-stat-value" style={{ fontSize: '0.74rem' }}>
+              {selectedDistrict === 'All' ? 'Statewide (8 Districts)' : selectedDistrict}
+            </span>
+          </div>
+          <div className="floating-stat-row">
             <span className="floating-stat-label">Active Feeds</span>
-            <span className="floating-stat-value">{activeCount} / {CAMERAS.length}</span>
+            <span className="floating-stat-value">{activeCount} / {filteredCameras.length}</span>
           </div>
           <div className="floating-stat-row">
             <span className="floating-stat-label">Coverage</span>
@@ -267,19 +941,31 @@ const CameraMap = React.memo(function CameraMap() {
           )}
         </div>
 
+        {/* Interactive Leaflet Map */}
         <MapContainer
-          center={[23.0225, 72.5714]}
-          zoom={12}
+          center={activeDistrictInfo.center}
+          zoom={activeDistrictInfo.zoom}
           scrollWheelZoom={true}
           className="leaflet-map-container"
         >
           {/* Handle background map click to expand */}
-          <MapClickHandler isFullscreen={isFullscreen} onExpand={handleExpand} />
+          <MapClickHandler
+            isFullscreen={isFullscreen}
+            isDrawerOpen={isDrawerOpen}
+            onExpand={handleExpand}
+          />
 
           {/* Invalidate size on fullscreen resize */}
           <MapResizeHandler isFullscreen={isFullscreen} />
 
-          {/* Layer Control: OpenStreetMap (Clean No Watermark), CartoDB, and Satellite */}
+          {/* Smooth Dynamic Flight to District or Focused Camera */}
+          <MapViewController
+            center={activeDistrictInfo.center}
+            zoom={activeDistrictInfo.zoom}
+            flyTarget={cameraFlyTarget}
+          />
+
+          {/* Layer Control: Streets, CartoDB, and Satellite */}
           <LayersControl position="topright">
             <LayersControl.BaseLayer checked name="Streets (Clean)">
               <TileLayer
@@ -314,12 +1000,17 @@ const CameraMap = React.memo(function CameraMap() {
             </LayersControl.BaseLayer>
           </LayersControl>
 
-          {/* Render All Camera Markers with Cached Icons */}
+          {/* Render Filtered Camera Markers with Cached Icons */}
           {filteredCameras.map((cam) => (
             <Marker
               key={cam.id}
               position={[cam.lat, cam.lng]}
               icon={getCameraIcon(cam)}
+              eventHandlers={{
+                click: () => {
+                  setSelectedCamera(cam);
+                },
+              }}
             >
               <Popup>
                 <div className="camera-popup-card">
@@ -334,10 +1025,14 @@ const CameraMap = React.memo(function CameraMap() {
 
                   <div className="popup-details-grid">
                     <div className="popup-detail-item">
+                      <span className="popup-detail-label">District</span>
+                      <span className="popup-detail-val">{getCameraDistrict(cam)}</span>
+                    </div>
+                    <div className="popup-detail-item">
                       <span className="popup-detail-label">Department</span>
                       <span
                         className="popup-dept-badge"
-                        style={{ backgroundColor: DEPARTMENT_COLORS[cam.department] }}
+                        style={{ backgroundColor: DEPARTMENT_COLORS[cam.department] || '#0284c7' }}
                       >
                         {cam.department}
                       </span>
@@ -365,15 +1060,299 @@ const CameraMap = React.memo(function CameraMap() {
                   <button
                     type="button"
                     className="popup-action-btn"
-                    onClick={() => alert(`Launching live stream feed for ${cam.id} (${cam.name})`)}
+                    onClick={() => {
+                      setSelectedCamera(cam);
+                      setIsDrawerOpen(true);
+                    }}
                   >
-                    Open Live Feed
+                    Inspect in Detail Drawer →
                   </button>
                 </div>
               </Popup>
             </Marker>
           ))}
         </MapContainer>
+
+        {/* Camera Detail Drawer Overlay */}
+        <aside
+          className={`cam-detail-drawer ${isDrawerOpen ? 'is-open' : ''}`}
+          aria-label="Camera Detail Drawer"
+        >
+          {selectedCamera && (
+            <>
+              {/* Drawer Top Header */}
+              <div className="cam-drawer-header">
+                <div className="cam-drawer-top-bar">
+                  <span className="cam-drawer-category">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    Pipeline 1 · Registry & Telemetry
+                  </span>
+                  <button
+                    type="button"
+                    className="cam-drawer-close-btn"
+                    onClick={() => setIsDrawerOpen(false)}
+                    title="Close Drawer (Esc)"
+                    aria-label="Close Drawer"
+                  >
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="cam-drawer-title-box">
+                  <h3 className="cam-drawer-title">{selectedCamera.name}</h3>
+                  <div className="cam-drawer-meta-badges">
+                    <span className="cam-badge-id">{selectedCamera.id}</span>
+                    <span className={`cam-badge-status ${selectedCamera.status}`}>
+                      <span
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: '50%',
+                          backgroundColor: STATUS_COLORS[selectedCamera.status] || '#16a34a',
+                          display: 'inline-block',
+                        }}
+                      />
+                      {selectedCamera.status}
+                    </span>
+                    <span
+                      className="cam-badge-dept"
+                      style={{ backgroundColor: DEPARTMENT_COLORS[selectedCamera.department] || '#0284c7' }}
+                    >
+                      {selectedCamera.department}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Drawer Content Body */}
+              <div className="cam-drawer-body">
+                {/* Simulated Live Stream Viewport */}
+                <div className="cam-video-viewport">
+                  <div className="cam-video-grid-pattern" />
+                  <div className="cam-video-reticle" />
+
+                  {/* AI Vision Bounding Box Simulation */}
+                  <div className={`cam-ai-bbox ${selectedCamera.status === 'alert' ? 'alert-bbox' : ''}`}>
+                    <span className="cam-ai-bbox-tag">
+                      {selectedCamera.department === 'Traffic'
+                        ? `VEHICLE [GJ-${selectedCamera.district === 'Surat' ? '05' : selectedCamera.district === 'Vadodara' ? '06' : selectedCamera.district === 'Rajkot' ? '03' : '01'}-AB-7104] 98%`
+                        : selectedCamera.status === 'alert'
+                        ? 'SUSPICIOUS ENTITY #891 · 94.2%'
+                        : 'OBJECT [PERSON] 96.5%'}
+                    </span>
+                  </div>
+
+                  {/* Top HUD Overlay */}
+                  <div className="cam-video-top-hud">
+                    <span className="cam-live-indicator">
+                      <span className="cam-rec-dot" />
+                      LIVE FEED · {simulatedTime}
+                    </span>
+                    <span className="cam-res-tag">{selectedCamera.resolution}</span>
+                  </div>
+
+                  {/* Bottom HUD Overlay */}
+                  <div className="cam-video-bottom-hud">
+                    <span>{selectedCamera.id} · {getCameraDistrict(selectedCamera)}</span>
+                    <span>{selectedCamera.fps} FPS · 18ms · H.264</span>
+                  </div>
+                </div>
+
+                {/* Video Quick Controls */}
+                <div className="cam-video-controls">
+                  <button
+                    type="button"
+                    className="cam-tool-btn primary"
+                    onClick={() => {
+                      setCameraFlyTarget({
+                        lat: selectedCamera.lat,
+                        lng: selectedCamera.lng,
+                        id: selectedCamera.id,
+                        ts: Date.now(),
+                      });
+                      showToast(`Focused map on ${selectedCamera.id}`);
+                    }}
+                    title="Center and zoom on this camera coordinates"
+                  >
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="22" y1="12" x2="18" y2="12" />
+                      <line x1="6" y1="12" x2="2" y2="12" />
+                      <line x1="12" y1="6" x2="12" y2="2" />
+                      <line x1="12" y1="22" x2="12" y2="18" />
+                    </svg>
+                    Center Map
+                  </button>
+
+                  <button
+                    type="button"
+                    className="cam-tool-btn"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(
+                        `rtsp://stream.gvista.gujarat.gov.in:554/live/${selectedCamera.id.toLowerCase()}`
+                      );
+                      showToast(`Copied RTSP URL for ${selectedCamera.id}`);
+                    }}
+                    title="Copy RTSP Stream URL"
+                  >
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                    Copy RTSP
+                  </button>
+
+                  <button
+                    type="button"
+                    className="cam-tool-btn"
+                    onClick={() => {
+                      showToast(`Captured evidence frame for ${selectedCamera.id}`);
+                    }}
+                    title="Capture forensic frame"
+                  >
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                      <circle cx="12" cy="13" r="4" />
+                    </svg>
+                    Snapshot
+                  </button>
+                </div>
+
+                {/* Status Diagnostic Banner */}
+                <div className={`cam-status-banner ${selectedCamera.status}`}>
+                  <div className="cam-banner-heading">
+                    {selectedCamera.status === 'alert' && (
+                      <>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2" />
+                          <line x1="12" y1="8" x2="12" y2="12" />
+                          <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                        <span>Active Alert Triggered</span>
+                      </>
+                    )}
+                    {selectedCamera.status === 'active' && (
+                      <>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                          <polyline points="22 4 12 14.01 9 11.01" />
+                        </svg>
+                        <span>Telemetry Nominal</span>
+                      </>
+                    )}
+                    {selectedCamera.status === 'offline' && (
+                      <>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                        </svg>
+                        <span>Signal Offline</span>
+                      </>
+                    )}
+                  </div>
+                  <div>
+                    {selectedCamera.status === 'alert'
+                      ? 'AI Pipeline 3 anomaly or license plate watchlist match identified. Incident priority: High.'
+                      : selectedCamera.status === 'offline'
+                      ? 'No RTSP signal received from VMS adapter. Ping check executing every 15s.'
+                      : 'Stream protocol running smoothly with zero dropped frames and real-time AI telemetry.'}
+                  </div>
+                </div>
+
+                {/* Technical Specifications Grid */}
+                <div className="cam-telemetry-section">
+                  <h4 className="cam-section-title">Telemetry & GIS Telemetry</h4>
+                  <div className="cam-telemetry-grid">
+                    <div className="cam-telemetry-tile">
+                      <span className="cam-tile-label">District</span>
+                      <span className="cam-tile-value">{getCameraDistrict(selectedCamera)}</span>
+                    </div>
+                    <div className="cam-telemetry-tile">
+                      <span className="cam-tile-label">Zone</span>
+                      <span className="cam-tile-value">{selectedCamera.zone}</span>
+                    </div>
+                    <div className="cam-telemetry-tile">
+                      <span className="cam-tile-label">GPS Latitude</span>
+                      <span className="cam-tile-value">{selectedCamera.lat.toFixed(5)}° N</span>
+                    </div>
+                    <div className="cam-telemetry-tile">
+                      <span className="cam-tile-label">GPS Longitude</span>
+                      <span className="cam-tile-value">{selectedCamera.lng.toFixed(5)}° E</span>
+                    </div>
+                    <div className="cam-telemetry-tile">
+                      <span className="cam-tile-label">Stream Resolution</span>
+                      <span className="cam-tile-value">{selectedCamera.resolution}</span>
+                    </div>
+                    <div className="cam-telemetry-tile">
+                      <span className="cam-tile-label">Frame Rate</span>
+                      <span className="cam-tile-value">{selectedCamera.fps} FPS</span>
+                    </div>
+                    <div className="cam-telemetry-tile">
+                      <span className="cam-tile-label">Protocol Ingest</span>
+                      <span className="cam-tile-value">RTSP/WHEP (P2)</span>
+                    </div>
+                    <div className="cam-telemetry-tile">
+                      <span className="cam-tile-label">AI Pipeline</span>
+                      <span className="cam-tile-value" style={{ color: '#16a34a' }}>Active (YOLOv11)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sibling Cameras in District */}
+                <div className="cam-sibling-section">
+                  <h4 className="cam-section-title">
+                    Nodes in {selectedDistrict === 'All' ? 'Gujarat' : selectedDistrict} ({districtCameras.length})
+                  </h4>
+                  <div className="cam-sibling-list">
+                    {districtCameras.map((cam) => {
+                      const isCurrent = cam.id === selectedCamera.id;
+                      return (
+                        <button
+                          key={cam.id}
+                          type="button"
+                          className={`cam-sibling-card ${isCurrent ? 'active' : ''}`}
+                          onClick={() => {
+                            setSelectedCamera(cam);
+                            setCameraFlyTarget({
+                              lat: cam.lat,
+                              lng: cam.lng,
+                              id: cam.id,
+                              ts: Date.now(),
+                            });
+                          }}
+                        >
+                          <div className="cam-sibling-info">
+                            <span className="cam-sibling-id">{cam.id}</span>
+                            <span className="cam-sibling-name">{cam.name}</span>
+                          </div>
+                          <span className={`popup-status-pill ${cam.status}`}>
+                            {cam.status}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Temporary Toast Notification */}
+              {toastMessage && (
+                <div className="cam-drawer-toast">
+                  <span>{toastMessage}</span>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
+              )}
+            </>
+          )}
+        </aside>
       </div>
 
       {/* Footer Status Legend */}
@@ -393,7 +1372,9 @@ const CameraMap = React.memo(function CameraMap() {
           </div>
         </div>
 
-        <span>Center: Ahmedabad (23.0225° N, 72.5714° E)</span>
+        <span>
+          Jurisdiction: {activeDistrictInfo.name} ({filteredCameras.length} Visible Nodes)
+        </span>
       </div>
     </div>
   );

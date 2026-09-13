@@ -88,28 +88,56 @@
   margin: 0;
 }
 
-.map-header-center {
-  display: flex;
-  align-items: center;
+.statewide-pill {
+  background: linear-gradient(135deg, #4f46e5, #0284c7);
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(79, 70, 229, 0.25);
 }
 
+.map-header-center {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.district-filter-row,
 .map-header-filters {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
+}
+
+.filter-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-right: 2px;
 }
 
 .filter-chip {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
-  padding: 4px 10px;
-  border-radius: 14px;
-  font-size: 0.75rem;
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.73rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.district-chip.active {
+  background-color: #0f172a;
+  color: #f8fafc;
+  border-color: #0f172a;
 }
 
 .filter-chip:hover {

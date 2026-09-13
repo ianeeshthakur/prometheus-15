@@ -408,12 +408,183 @@ export const CAMERAS = [
     lat: 23.0721,
     lng: 72.6454,
     department: 'Traffic',
+    district: 'Ahmedabad',
     status: 'active',
     zone: 'Eastern Commercial',
     fps: 30,
     resolution: '1080p (1920x1080)',
   },
+
+  // --- Surat District ---
+  {
+    id: 'CAM-SRT-01',
+    name: 'Surat Ring Road Majura Gate Flyover',
+    lat: 21.1824,
+    lng: 72.8198,
+    department: 'Traffic',
+    district: 'Surat',
+    status: 'alert',
+    zone: 'Majura Gate Junction',
+    fps: 30,
+    resolution: '4K (3840x2160)',
+  },
+  {
+    id: 'CAM-SRT-02',
+    name: 'Varachha Diamond Market Square',
+    lat: 21.2144,
+    lng: 72.8592,
+    department: 'Police',
+    district: 'Surat',
+    status: 'active',
+    zone: 'Varachha Commercial',
+    fps: 25,
+    resolution: '1080p (1920x1080)',
+  },
+  {
+    id: 'CAM-SRT-03',
+    name: 'Kamrej Toll Plaza NH-48 Outbound',
+    lat: 21.2721,
+    lng: 72.9641,
+    department: 'Traffic',
+    district: 'Surat',
+    status: 'active',
+    zone: 'NH-48 Corridor',
+    fps: 30,
+    resolution: '4K (3840x2160)',
+  },
+
+  // --- Vadodara District ---
+  {
+    id: 'CAM-VDR-01',
+    name: 'Sayaji Baug Palace Perimeter West',
+    lat: 22.3117,
+    lng: 73.1895,
+    department: 'Municipal',
+    district: 'Vadodara',
+    status: 'alert',
+    zone: 'Sayaji Park',
+    fps: 30,
+    resolution: '1080p (1920x1080)',
+  },
+  {
+    id: 'CAM-VDR-02',
+    name: 'Alkapuri Underpass Traffic Flow',
+    lat: 22.3106,
+    lng: 73.1705,
+    department: 'Traffic',
+    district: 'Vadodara',
+    status: 'active',
+    zone: 'Alkapuri West',
+    fps: 30,
+    resolution: '1080p (1920x1080)',
+  },
+
+  // --- Gandhinagar District ---
+  {
+    id: 'CAM-GNR-01',
+    name: 'Infocity Circle Surveillance Post',
+    lat: 23.1923,
+    lng: 72.6288,
+    department: 'Police',
+    district: 'Gandhinagar',
+    status: 'active',
+    zone: 'Infocity IT Hub',
+    fps: 60,
+    resolution: '4K (3840x2160)',
+  },
+  {
+    id: 'CAM-GNR-02',
+    name: 'Sachivalaya Gate 4 Command Node',
+    lat: 23.2156,
+    lng: 72.6369,
+    department: 'Police',
+    district: 'Gandhinagar',
+    status: 'active',
+    zone: 'State Secretariat',
+    fps: 30,
+    resolution: '4K (3840x2160)',
+  },
+
+  // --- Rajkot District ---
+  {
+    id: 'CAM-RJK-01',
+    name: 'Yagnik Road Commercial Hub',
+    lat: 22.2969,
+    lng: 70.7984,
+    department: 'Police',
+    district: 'Rajkot',
+    status: 'active',
+    zone: 'Central Rajkot',
+    fps: 30,
+    resolution: '1080p (1920x1080)',
+  },
+  {
+    id: 'CAM-RJK-02',
+    name: 'Kishanpara Chowk Intersection',
+    lat: 22.3021,
+    lng: 70.8035,
+    department: 'Traffic',
+    district: 'Rajkot',
+    status: 'active',
+    zone: 'Rajkot Ring Road',
+    fps: 30,
+    resolution: '1080p (1920x1080)',
+  },
+
+  // --- Bhavnagar District ---
+  {
+    id: 'CAM-BHV-01',
+    name: 'Ghogha Port Ro-Ro Ferry Terminal',
+    lat: 21.6881,
+    lng: 72.2798,
+    department: 'Civil Supplies',
+    district: 'Bhavnagar',
+    status: 'active',
+    zone: 'Port Logistics',
+    fps: 25,
+    resolution: '1080p (1920x1080)',
+  },
+
+  // --- Jamnagar District ---
+  {
+    id: 'CAM-JMN-01',
+    name: 'Reliance Greens Highway Checkpoint',
+    lat: 22.3852,
+    lng: 69.8512,
+    department: 'Traffic',
+    district: 'Jamnagar',
+    status: 'offline',
+    zone: 'Motikhavdi NH-947',
+    fps: 0,
+    resolution: '720p (1280x720)',
+  },
+
+  // --- Kutch District ---
+  {
+    id: 'CAM-KCH-01',
+    name: 'Kandla Cargo Entry Terminal 2',
+    lat: 23.0035,
+    lng: 70.2185,
+    department: 'Food Safety',
+    district: 'Kutch',
+    status: 'active',
+    zone: 'Deendayal Port Freight',
+    fps: 30,
+    resolution: '4K (3840x2160)',
+  },
 ];
+
+export const DISTRICT_CENTERS = {
+  All: { center: [22.2587, 71.1924], zoom: 8, name: 'Statewide Gujarat' },
+  Ahmedabad: { center: [23.0225, 72.5714], zoom: 12, name: 'Ahmedabad Metro' },
+  Surat: { center: [21.1702, 72.8311], zoom: 12, name: 'Surat City' },
+  Vadodara: { center: [22.3072, 73.1812], zoom: 12, name: 'Vadodara Central' },
+  Gandhinagar: { center: [23.2156, 72.6369], zoom: 12, name: 'Gandhinagar Capital' },
+  Rajkot: { center: [22.3039, 70.8022], zoom: 12, name: 'Rajkot Hub' },
+  Bhavnagar: { center: [21.7645, 72.1519], zoom: 12, name: 'Bhavnagar Coastal' },
+  Jamnagar: { center: [22.4707, 70.0577], zoom: 11, name: 'Jamnagar Industrial' },
+  Kutch: { center: [23.2420, 69.6669], zoom: 10, name: 'Kutch Border & Ports' },
+};
 
 export const DEPARTMENT_COLORS = {
   Police: '#4f46e5',     // Indigo
@@ -422,10 +593,14 @@ export const DEPARTMENT_COLORS = {
   Food: '#0284c7',       // Sky Blue (Accent)
   Sanitation: '#10b981', // Emerald
   Health: '#ea580c',     // Warm Coral
+  'Food Safety': '#0284c7',
+  'Civil Supplies': '#8b5cf6',
 };
 
 export const STATUS_COLORS = {
   active: '#16a34a',
   alert: '#dc2626',
   offline: '#94a3b8',
+  degraded: '#eab308',
 };
+

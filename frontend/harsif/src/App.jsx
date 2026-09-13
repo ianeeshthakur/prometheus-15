@@ -28,6 +28,9 @@ function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/dashboard" element={<Navigate to="/" replace />} />
                 <Route path="/model-1" element={<Model1 />} />
+                <Route path="/registry" element={<Model1 />} />
+                <Route path="/cameras" element={<Model1 />} />
+                <Route path="/cctv-registry" element={<Model1 />} />
                 <Route path="/model-2" element={<Model2 />} />
                 <Route path="/model-3" element={<Model3 />} />
                 <Route path="/model-4" element={<Model4 />} />

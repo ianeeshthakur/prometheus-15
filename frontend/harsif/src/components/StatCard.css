@@ -1,0 +1,172 @@
+/* ==========================================================================
+   StatCard.css - Clean Light-Theme Metric Card with Gentle Hover Lift
+   ========================================================================== */
+
+.stat-card {
+  position: relative;
+  background-color: var(--bg-primary, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  overflow: hidden;
+  /* Smooth lift on hover (transition, not a hard jump) */
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+  user-select: none;
+}
+
+.stat-card.is-clickable {
+  cursor: pointer;
+}
+
+/* Hover Lift Effect */
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px -4px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.03);
+  border-color: #cbd5e1;
+}
+
+/* Subtle Top Accent Stripe */
+.stat-card-accent-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: var(--stat-accent-color, #0284c7);
+}
+
+/* Accent Color Variants */
+.stat-card-blue {
+  --stat-accent-color: #0284c7;
+  --stat-accent-bg: rgba(2, 132, 199, 0.08);
+  --stat-accent-border: rgba(2, 132, 199, 0.22);
+  --stat-accent-text: #0369a1;
+}
+
+.stat-card-green {
+  --stat-accent-color: #16a34a;
+  --stat-accent-bg: rgba(22, 163, 74, 0.08);
+  --stat-accent-border: rgba(22, 163, 74, 0.22);
+  --stat-accent-text: #15803d;
+}
+
+.stat-card-red {
+  --stat-accent-color: #dc2626;
+  --stat-accent-bg: rgba(220, 38, 38, 0.08);
+  --stat-accent-border: rgba(220, 38, 38, 0.22);
+  --stat-accent-text: #b91c1c;
+}
+
+.stat-card-amber {
+  --stat-accent-color: #d97706;
+  --stat-accent-bg: rgba(217, 119, 6, 0.08);
+  --stat-accent-border: rgba(217, 119, 6, 0.22);
+  --stat-accent-text: #b45309;
+}
+
+/* Card Header: Label & Icon */
+.stat-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stat-card-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary, #475569);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.stat-card-icon-wrapper {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background-color: var(--stat-accent-bg, rgba(2, 132, 199, 0.08));
+  border: 1px solid var(--stat-accent-border, rgba(2, 132, 199, 0.2));
+  color: var(--stat-accent-color, #0284c7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.stat-card:hover .stat-card-icon-wrapper {
+  transform: scale(1.05);
+}
+
+/* Value Display: Big Number & Suffix/Prefix */
+.stat-card-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stat-card-number {
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.stat-card-prefix,
+.stat-card-suffix {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text-secondary, #475569);
+}
+
+/* Footer / Subtext / Trend */
+.stat-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.76rem;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 8px;
+  margin-top: 2px;
+}
+
+.stat-card-subtext {
+  color: var(--text-secondary, #64748b);
+  margin: 0;
+}
+
+.stat-card-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+}
+
+.stat-card-trend.trend-positive {
+  background-color: rgba(22, 163, 74, 0.08);
+  color: #15803d;
+}
+
+.stat-card-trend.trend-negative {
+  background-color: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+}
+
+.stat-card-trend.trend-neutral {
+  background-color: #f1f5f9;
+  color: #475569;
+}
