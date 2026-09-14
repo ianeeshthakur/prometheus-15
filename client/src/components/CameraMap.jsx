@@ -2,8 +2,61 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, LayersControl, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { CAMERAS, DEPARTMENT_COLORS, STATUS_COLORS, DISTRICT_CENTERS } from '../data/cameras';
+import { DEPARTMENT_COLORS, STATUS_COLORS, DISTRICT_CENTERS } from '../data/cameras';
+import api from '../api/client';
 import './CameraMap.css';
+
+// Rewired 2026-09-14 (docs/frontend.md §5.1) to real api.getCameras() data instead of
+// data/cameras.js's hardcoded CAMERAS array -- this used to show a fixed "48 Nodes
+// Online / 77.1% Coverage" regardless of what was actually registered, visibly
+// contradicting the real "0 cameras" shown right next to it on Dashboard.jsx once
+// that page was fixed. DISTRICT_CENTERS/DEPARTMENT_COLORS/STATUS_COLORS are kept from
+// data/cameras.js -- those are real geographic/color reference constants, not
+// fabricated camera records.
+//
+// Real cameras don't carry `zone`/`resolution`/`fps` (no such columns on the backend,
+// server/schemas/camera.py) or an "alert" status (real CameraStatus is
+// ACTIVE/INACTIVE/DEGRADED/OFFLINE) -- the per-camera drawer below was rewritten to
+// show only real fields, and the fabricated "LIVE FEED" video HUD with a fake AI
+// bounding box + fake license plate ("VEHICLE [GJ-05-AB-7104] 98%") was replaced with
+// an honest placeholder, matching LiveCameras.jsx's established pattern. The
+// "Copy RTSP" button was removed entirely: `rtsp_url` is never exposed to the
+// frontend on purpose (security -- CameraResponse omits it, core/security.py), so
+// there was never a real URL to copy, only a fabricated one
+// ("rtsp://stream.gvista.gujarat.gov.in:554/..." -- that host doesn't exist).
+
+/** Real CameraStatus values (server/schemas/camera.py) don't include "alert" -- maps
+ * DEGRADED to the same visual treatment the old fake "alert" status used (amber/red
+ * pulse), since both mean "needs attention", while keeping ACTIVE/OFFLINE distinct.
+ * INACTIVE (an intentionally disabled camera, not a fault) renders like OFFLINE. */
+function mapRealStatus(status) {
+  const s = (status || 'ACTIVE').toUpperCase();
+  if (s === 'DEGRADED') return 'alert';
+  if (s === 'OFFLINE' || s === 'INACTIVE') return 'offline';
+  return 'active';
+}
+
+/** Adapts a real api.getCameras() row into the shape this component's markup already
+ * expects (id/lat/lng/status), so the marker/popup/drawer JSX below didn't need a
+ * field-by-field rewrite -- while `realStatus` keeps the actual backend value
+ * (ACTIVE/DEGRADED/OFFLINE/INACTIVE) for honest display text, separate from the
+ * lowercase `status` used only for CSS/icon matching. */
+function normalizeCamera(apiCam) {
+  return {
+    id: apiCam.camera_uid,
+    name: apiCam.name,
+    lat: apiCam.latitude,
+    lng: apiCam.longitude,
+    status: mapRealStatus(apiCam.status),
+    realStatus: apiCam.status,
+    department: apiCam.department,
+    district: apiCam.district,
+    protocolType: apiCam.protocol_type,
+    aiProfile: apiCam.ai_profile,
+    aiEnabled: apiCam.ai_enabled,
+    onboardingSource: apiCam.onboarding_source,
+  };
+}
 
 // Fix Leaflet default icon path issues in bundlers
 delete L.Icon.Default.prototype._getIconUrl;
@@ -100,18 +153,10 @@ function playCollapseSound() {
   }
 }
 
-// Helper to reliably infer Gujarat district if not explicitly populated
+// district is a required field on every real camera (CameraCreate, server/schemas/
+// camera.py) -- no inference needed, unlike the old mock data's ID-prefix guessing.
 function getCameraDistrict(cam) {
-  if (cam.district) return cam.district;
-  if (!cam.id) return 'Ahmedabad';
-  if (cam.id.startsWith('CAM-SRT')) return 'Surat';
-  if (cam.id.startsWith('CAM-VDR')) return 'Vadodara';
-  if (cam.id.startsWith('CAM-GNR')) return 'Gandhinagar';
-  if (cam.id.startsWith('CAM-RJK')) return 'Rajkot';
-  if (cam.id.startsWith('CAM-BHV')) return 'Bhavnagar';
-  if (cam.id.startsWith('CAM-JMN')) return 'Jamnagar';
-  if (cam.id.startsWith('CAM-KCH')) return 'Kutch';
-  return 'Ahmedabad';
+  return cam.district || 'Unknown';
 }
 
 // Helper component to listen to clicks on the map background
@@ -181,6 +226,8 @@ function MapViewController({ center, zoom, flyTarget }) {
 }
 
 const CameraMap = React.memo(function CameraMap() {
+  const [cameras, setCameras] = useState([]);
+  const [camerasLoading, setCamerasLoading] = useState(true);
   const [selectedDistrict, setSelectedDistrict] = useState('All');
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -188,14 +235,16 @@ const CameraMap = React.memo(function CameraMap() {
   const [selectedCamera, setSelectedCamera] = useState(null);
   const [cameraFlyTarget, setCameraFlyTarget] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
-  const [simulatedTime, setSimulatedTime] = useState(new Date().toLocaleTimeString());
+  const [checkingHealth, setCheckingHealth] = useState(false);
 
-  // Update HUD simulated video timecode
   useEffect(() => {
-    const timer = setInterval(() => {
-      setSimulatedTime(new Date().toLocaleTimeString());
-    }, 1000);
-    return () => clearInterval(timer);
+    api
+      .getCameras()
+      .then((data) => {
+        const rows = Array.isArray(data) ? data : [];
+        setCameras(rows.filter((c) => c.latitude != null && c.longitude != null).map(normalizeCamera));
+      })
+      .finally(() => setCamerasLoading(false));
   }, []);
 
   const handleExpand = useCallback(() => {
@@ -236,12 +285,12 @@ const CameraMap = React.memo(function CameraMap() {
 
   // Sibling cameras in current district for switcher
   const districtCameras = useMemo(() => {
-    if (selectedDistrict === 'All') return CAMERAS;
-    return CAMERAS.filter((cam) => {
+    if (selectedDistrict === 'All') return cameras;
+    return cameras.filter((cam) => {
       const dist = getCameraDistrict(cam);
       return dist.toLowerCase() === selectedDistrict.toLowerCase();
     });
-  }, [selectedDistrict]);
+  }, [cameras, selectedDistrict]);
 
   // Filtered cameras by both district and department
   const filteredCameras = useMemo(() => {
@@ -251,14 +300,14 @@ const CameraMap = React.memo(function CameraMap() {
     });
   }, [districtCameras, selectedDept]);
 
-  // Available unique departments across active dataset
+  // Available unique departments across the real, registered fleet.
   const availableDepartments = useMemo(() => {
     const depts = new Set();
-    CAMERAS.forEach((c) => {
+    cameras.forEach((c) => {
       if (c.department) depts.add(c.department);
     });
     return Array.from(depts);
-  }, []);
+  }, [cameras]);
 
   // Automatically keep selectedCamera valid
   useEffect(() => {
@@ -442,6 +491,27 @@ const CameraMap = React.memo(function CameraMap() {
           flex-direction: column;
           justify-content: space-between;
           padding: 10px;
+        }
+
+        .cam-video-viewport-empty {
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          text-align: center;
+        }
+
+        .cam-video-empty-label {
+          color: #94a3b8;
+          font-size: 0.8rem;
+          font-weight: 600;
+          z-index: 1;
+        }
+
+        .cam-video-empty-sub {
+          color: #64748b;
+          font-size: 0.68rem;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          z-index: 1;
         }
 
         .cam-video-grid-pattern {
@@ -797,9 +867,11 @@ const CameraMap = React.memo(function CameraMap() {
             )}
           </div>
           <p className="map-card-subtitle">
-            {selectedDistrict === 'All'
-              ? `Gujarat Statewide Multi-District GIS Grid · ${CAMERAS.length} Nodes Online`
-              : `${activeDistrictInfo.name} Command & Telemetry Grid · ${districtCameras.length} Nodes`}
+            {camerasLoading
+              ? 'Loading registry…'
+              : selectedDistrict === 'All'
+              ? `Gujarat Statewide Multi-District GIS Grid · ${cameras.length} Registered Node${cameras.length === 1 ? '' : 's'}`
+              : `${activeDistrictInfo.name} Command & Telemetry Grid · ${districtCameras.length} Node${districtCameras.length === 1 ? '' : 's'}`}
           </p>
         </div>
 
@@ -919,21 +991,20 @@ const CameraMap = React.memo(function CameraMap() {
           <div className="floating-stat-row">
             <span className="floating-stat-label">Jurisdiction</span>
             <span className="floating-stat-value" style={{ fontSize: '0.74rem' }}>
-              {selectedDistrict === 'All' ? 'Statewide (8 Districts)' : selectedDistrict}
+              {selectedDistrict === 'All' ? `Statewide (${Object.keys(DISTRICT_CENTERS).length - 1} Districts)` : selectedDistrict}
             </span>
           </div>
           <div className="floating-stat-row">
-            <span className="floating-stat-label">Active Feeds</span>
+            <span className="floating-stat-label">Active</span>
             <span className="floating-stat-value">{activeCount} / {filteredCameras.length}</span>
           </div>
           <div className="floating-stat-row">
             <span className="floating-stat-label">Coverage</span>
             <span className="floating-stat-value">{coveragePct}%</span>
           </div>
-          <div className="floating-stat-row">
-            <span className="floating-stat-label">Stream Latency</span>
-            <span className="floating-stat-value">18 ms</span>
-          </div>
+          {/* No real per-stream latency metric exists on the backend -- the old "18 ms"
+              here was a fixed, fabricated number regardless of what was actually
+              registered. Removed rather than kept as decoration. */}
           {!isFullscreen && (
             <div className="floating-expand-hint">
               <span>Click map to expand</span>
@@ -1017,7 +1088,7 @@ const CameraMap = React.memo(function CameraMap() {
                   <div className="popup-top-row">
                     <span className="popup-cam-id">{cam.id}</span>
                     <span className={`popup-status-pill ${cam.status}`}>
-                      {cam.status}
+                      {cam.realStatus}
                     </span>
                   </div>
 
@@ -1038,16 +1109,16 @@ const CameraMap = React.memo(function CameraMap() {
                       </span>
                     </div>
                     <div className="popup-detail-item">
-                      <span className="popup-detail-label">Zone</span>
-                      <span className="popup-detail-val">{cam.zone}</span>
+                      <span className="popup-detail-label">Protocol</span>
+                      <span className="popup-detail-val">{cam.protocolType}</span>
                     </div>
                     <div className="popup-detail-item">
-                      <span className="popup-detail-label">Stream Res</span>
-                      <span className="popup-detail-val">{cam.resolution}</span>
+                      <span className="popup-detail-label">AI Profile</span>
+                      <span className="popup-detail-val">{cam.aiEnabled ? cam.aiProfile : 'AI disabled'}</span>
                     </div>
                     <div className="popup-detail-item">
-                      <span className="popup-detail-label">FPS</span>
-                      <span className="popup-detail-val">{cam.fps} fps</span>
+                      <span className="popup-detail-label">Onboarded via</span>
+                      <span className="popup-detail-val">{cam.onboardingSource}</span>
                     </div>
                     <div className="popup-detail-item">
                       <span className="popup-detail-label">Coordinates</span>
@@ -1118,7 +1189,7 @@ const CameraMap = React.memo(function CameraMap() {
                           display: 'inline-block',
                         }}
                       />
-                      {selectedCamera.status}
+                      {selectedCamera.realStatus}
                     </span>
                     <span
                       className="cam-badge-dept"
@@ -1132,36 +1203,19 @@ const CameraMap = React.memo(function CameraMap() {
 
               {/* Drawer Content Body */}
               <div className="cam-drawer-body">
-                {/* Simulated Live Stream Viewport */}
-                <div className="cam-video-viewport">
+                {/* No fake video: there's no reachable real ingest host to play from
+                    in this environment (backend.md §12.7.1), and there is no real
+                    per-frame AI detection feed exposed to the client to overlay
+                    (server/routers/ai.py is per-frame analyze-frame only, not a
+                    live list). This used to show a fabricated license-plate
+                    detection ("VEHICLE [GJ-05-AB-7104] 98%") and a ticking fake
+                    "LIVE FEED" timestamp regardless of whether anything was actually
+                    streaming -- removed rather than kept as decoration, matching
+                    LiveCameras.jsx's honest placeholder. */}
+                <div className="cam-video-viewport cam-video-viewport-empty">
                   <div className="cam-video-grid-pattern" />
-                  <div className="cam-video-reticle" />
-
-                  {/* AI Vision Bounding Box Simulation */}
-                  <div className={`cam-ai-bbox ${selectedCamera.status === 'alert' ? 'alert-bbox' : ''}`}>
-                    <span className="cam-ai-bbox-tag">
-                      {selectedCamera.department === 'Traffic'
-                        ? `VEHICLE [GJ-${selectedCamera.district === 'Surat' ? '05' : selectedCamera.district === 'Vadodara' ? '06' : selectedCamera.district === 'Rajkot' ? '03' : '01'}-AB-7104] 98%`
-                        : selectedCamera.status === 'alert'
-                        ? 'SUSPICIOUS ENTITY #891 · 94.2%'
-                        : 'OBJECT [PERSON] 96.5%'}
-                    </span>
-                  </div>
-
-                  {/* Top HUD Overlay */}
-                  <div className="cam-video-top-hud">
-                    <span className="cam-live-indicator">
-                      <span className="cam-rec-dot" />
-                      LIVE FEED · {simulatedTime}
-                    </span>
-                    <span className="cam-res-tag">{selectedCamera.resolution}</span>
-                  </div>
-
-                  {/* Bottom HUD Overlay */}
-                  <div className="cam-video-bottom-hud">
-                    <span>{selectedCamera.id} · {getCameraDistrict(selectedCamera)}</span>
-                    <span>{selectedCamera.fps} FPS · 18ms · H.264</span>
-                  </div>
+                  <span className="cam-video-empty-label">No live playback in this environment</span>
+                  <span className="cam-video-empty-sub">{selectedCamera.protocolType} · {selectedCamera.id}</span>
                 </div>
 
                 {/* Video Quick Controls */}
@@ -1190,37 +1244,34 @@ const CameraMap = React.memo(function CameraMap() {
                     Center Map
                   </button>
 
+                  {/* Real adapter-health check, not a fake "Copy RTSP" (there's no
+                      real URL to copy -- rtsp_url is never exposed to the frontend,
+                      core/security.py) or fake "Snapshot" (no capture endpoint
+                      exists). Calls the real GET
+                      /api/cameras/{uid}/adapter/health, which genuinely attempts a
+                      live connection -- honest about failing when there's nothing
+                      real to connect to, not a canned success message. */}
                   <button
                     type="button"
                     className="cam-tool-btn"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(
-                        `rtsp://stream.gvista.gujarat.gov.in:554/live/${selectedCamera.id.toLowerCase()}`
-                      );
-                      showToast(`Copied RTSP URL for ${selectedCamera.id}`);
+                    disabled={checkingHealth}
+                    onClick={async () => {
+                      setCheckingHealth(true);
+                      try {
+                        const health = await api.getAdapterHealth(selectedCamera.id);
+                        showToast(`${selectedCamera.id}: ${health.status} (${health.dimensions})`);
+                      } catch (err) {
+                        showToast(`${selectedCamera.id}: health check failed -- ${err.message}`);
+                      } finally {
+                        setCheckingHealth(false);
+                      }
                     }}
-                    title="Copy RTSP Stream URL"
+                    title="Attempt a real adapter connection and report its health"
                   >
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
                     </svg>
-                    Copy RTSP
-                  </button>
-
-                  <button
-                    type="button"
-                    className="cam-tool-btn"
-                    onClick={() => {
-                      showToast(`Captured evidence frame for ${selectedCamera.id}`);
-                    }}
-                    title="Capture forensic frame"
-                  >
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                      <circle cx="12" cy="13" r="4" />
-                    </svg>
-                    Snapshot
+                    {checkingHealth ? 'Checking…' : 'Check Adapter Health'}
                   </button>
                 </div>
 
@@ -1258,48 +1309,56 @@ const CameraMap = React.memo(function CameraMap() {
                   </div>
                   <div>
                     {selectedCamera.status === 'alert'
-                      ? 'AI Pipeline 3 anomaly or license plate watchlist match identified. Incident priority: High.'
+                      ? 'Adapter reports DEGRADED health -- a real connection or read issue, not necessarily an AI detection. Check Adapter Health above for the live status.'
                       : selectedCamera.status === 'offline'
-                      ? 'No RTSP signal received from VMS adapter. Ping check executing every 15s.'
-                      : 'Stream protocol running smoothly with zero dropped frames and real-time AI telemetry.'}
+                      ? `Registry status is ${selectedCamera.realStatus}. Run a real adapter health check above to confirm current connectivity.`
+                      : `Registry status is ${selectedCamera.realStatus}.`}
                   </div>
                 </div>
 
-                {/* Technical Specifications Grid */}
+                {/* Technical Specifications Grid -- only real fields
+                    (server/schemas/camera.py). The old "Stream Resolution"/"Frame
+                    Rate"/"Protocol Ingest: RTSP/WHEP (P2)"/"AI Pipeline: Active
+                    (YOLOv11)" tiles were fabricated: the backend doesn't track
+                    resolution/FPS at all, and claims a specific "YOLOv11" model when
+                    the real AI engine reports itself as "simulated"
+                    (GET /api/health/). */}
                 <div className="cam-telemetry-section">
-                  <h4 className="cam-section-title">Telemetry & GIS Telemetry</h4>
+                  <h4 className="cam-section-title">Registry Telemetry</h4>
                   <div className="cam-telemetry-grid">
                     <div className="cam-telemetry-tile">
                       <span className="cam-tile-label">District</span>
                       <span className="cam-tile-value">{getCameraDistrict(selectedCamera)}</span>
                     </div>
                     <div className="cam-telemetry-tile">
-                      <span className="cam-tile-label">Zone</span>
-                      <span className="cam-tile-value">{selectedCamera.zone}</span>
+                      <span className="cam-tile-label">Department</span>
+                      <span className="cam-tile-value">{selectedCamera.department}</span>
                     </div>
                     <div className="cam-telemetry-tile">
                       <span className="cam-tile-label">GPS Latitude</span>
-                      <span className="cam-tile-value">{selectedCamera.lat.toFixed(5)}° N</span>
+                      <span className="cam-tile-value">{selectedCamera.lat.toFixed(5)}&deg; N</span>
                     </div>
                     <div className="cam-telemetry-tile">
                       <span className="cam-tile-label">GPS Longitude</span>
-                      <span className="cam-tile-value">{selectedCamera.lng.toFixed(5)}° E</span>
+                      <span className="cam-tile-value">{selectedCamera.lng.toFixed(5)}&deg; E</span>
                     </div>
                     <div className="cam-telemetry-tile">
-                      <span className="cam-tile-label">Stream Resolution</span>
-                      <span className="cam-tile-value">{selectedCamera.resolution}</span>
+                      <span className="cam-tile-label">Protocol</span>
+                      <span className="cam-tile-value">{selectedCamera.protocolType}</span>
                     </div>
                     <div className="cam-telemetry-tile">
-                      <span className="cam-tile-label">Frame Rate</span>
-                      <span className="cam-tile-value">{selectedCamera.fps} FPS</span>
+                      <span className="cam-tile-label">AI Analytics</span>
+                      <span className="cam-tile-value" style={{ color: selectedCamera.aiEnabled ? '#16a34a' : undefined }}>
+                        {selectedCamera.aiEnabled ? `Enabled (${selectedCamera.aiProfile})` : 'Disabled'}
+                      </span>
                     </div>
                     <div className="cam-telemetry-tile">
-                      <span className="cam-tile-label">Protocol Ingest</span>
-                      <span className="cam-tile-value">RTSP/WHEP (P2)</span>
+                      <span className="cam-tile-label">Onboarded via</span>
+                      <span className="cam-tile-value">{selectedCamera.onboardingSource}</span>
                     </div>
                     <div className="cam-telemetry-tile">
-                      <span className="cam-tile-label">AI Pipeline</span>
-                      <span className="cam-tile-value" style={{ color: '#16a34a' }}>Active (YOLOv11)</span>
+                      <span className="cam-tile-label">Status</span>
+                      <span className="cam-tile-value">{selectedCamera.realStatus}</span>
                     </div>
                   </div>
                 </div>
@@ -1332,7 +1391,7 @@ const CameraMap = React.memo(function CameraMap() {
                             <span className="cam-sibling-name">{cam.name}</span>
                           </div>
                           <span className={`popup-status-pill ${cam.status}`}>
-                            {cam.status}
+                            {cam.realStatus}
                           </span>
                         </button>
                       );

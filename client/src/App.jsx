@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { LanguageProvider } from './i18n/LanguageContext';
 import AccessibilityBar from './components/AccessibilityBar';
 import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
@@ -10,6 +11,7 @@ import Model3 from './pages/Model3';
 import Model4 from './pages/Model4';
 import Investigation from './pages/Investigation';
 import Watchlists from './pages/Watchlists';
+import SystemNetwork from './pages/SystemNetwork';
 import Settings from './pages/Settings';
 import LoginScreen from './pages/LoginScreen';
 import api from './api/client';
@@ -48,6 +50,7 @@ function App() {
                 <Route path="/model-4" element={<Model4 />} />
                 <Route path="/investigation" element={<Investigation />} />
                 <Route path="/watchlists" element={<Watchlists />} />
+                <Route path="/system" element={<SystemNetwork />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
@@ -61,9 +64,11 @@ function App() {
 
 function RoutedApp() {
   return (
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <LanguageProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </LanguageProvider>
   );
 }
 

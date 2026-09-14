@@ -13,6 +13,11 @@
 
 .live-camera-card { border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: var(--bg-primary); }
 .live-camera-thumb { height: 120px; background: #0f172a; color: #94a3b8; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 0.7rem; padding: 10px; }
+.live-camera-thumb-error { color: #f87171; }
+.live-camera-actions { margin-top: 8px; }
+.live-camera-btn { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 7px 10px; font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+.live-camera-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.live-camera-btn.stop { background: #c62828; }
 .live-camera-meta { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
 .live-camera-title-row { display: flex; align-items: center; justify-content: space-between; }
 .live-camera-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.75rem; font-weight: 700; color: var(--text-primary); }

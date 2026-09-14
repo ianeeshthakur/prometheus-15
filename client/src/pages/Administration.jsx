@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import StatusBadge from '../components/StatusBadge';
 import api from '../api/client';
+import { useLanguage } from '../i18n/LanguageContext';
 import './Administration.css';
 
 // docs/frontend.md §5's last remaining stub, mapped to prd.md's "Administration"
@@ -220,14 +221,15 @@ function FacialRecognitionTab() {
 }
 
 function Administration() {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState(TABS[0]);
 
   return (
     <div className="administration-page">
       <header className="admin-header">
         <span className="section-eyebrow">PLATFORM / ADMINISTRATION</span>
-        <h1>Administration</h1>
-        <p>User & role management, audit trail, and the facial-recognition privacy gate.</p>
+        <h1>{t('admin_title')}</h1>
+        <p>{t('admin_subtitle')}</p>
       </header>
 
       <div className="admin-tabs">

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/client';
+import { useLanguage } from '../i18n/LanguageContext';
 import './Topbar.css';
 
 function Topbar() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [backendMode, setBackendMode] = useState('Checking...');
   const [unreadAlerts, setUnreadAlerts] = useState(3);
   const [currentUser, setCurrentUser] = useState(null);
@@ -34,10 +36,10 @@ function Topbar() {
           </div>
           <div>
             <div className="topbar-brand-title-row">
-              <span className="brand-name">G-VISTA</span>
-              <span className="state-tag">GUJARAT POLICE & COMMAND</span>
+              <span className="brand-name">{t('topbar_brand')}</span>
+              <span className="state-tag">{t('topbar_state_tag')}</span>
             </div>
-            <span className="topbar-sub">Statewide Video Intelligence & Investigation Platform</span>
+            <span className="topbar-sub">{t('topbar_subtitle')}</span>
           </div>
         </div>
       </div>
@@ -84,7 +86,7 @@ function Topbar() {
               {currentUser ? `${currentUser.role}${currentUser.department_scope ? ' · ' + currentUser.department_scope : ''}` : 'No backend connected'}
             </span>
           </div>
-          <button type="button" className="officer-logout" onClick={handleLogout} title="Log out">
+          <button type="button" className="officer-logout" onClick={handleLogout} title={t('topbar_logout')}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />

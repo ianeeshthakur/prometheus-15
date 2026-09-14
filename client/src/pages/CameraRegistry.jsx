@@ -5,6 +5,7 @@ import StatusBadge from '../components/StatusBadge';
 import DataTable from '../components/DataTable';
 import { getCCTVRegistryStats } from '../api/mockData';
 import api from '../api/client';
+import { useLanguage } from '../i18n/LanguageContext';
 import './CameraRegistry.css';
 
 // docs/backend.md's real CameraCreate schema (server/schemas/camera.py) -- only these
@@ -34,9 +35,11 @@ const emptyNewCameraForm = {
   ai_profile: 'TRAFFIC',
   latitude: '',
   longitude: '',
+  rtsp_url: '',
 };
 
 function CameraRegistry() {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const [cameras, setCameras] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +52,13 @@ function CameraRegistry() {
 
   const [newCameraForm, setNewCameraForm] = useState(emptyNewCameraForm);
 
+  // Model 1's mandatory "gap-analysis report" (prd.md §0.1) -- real
+  // GET /api/cameras/gap-analysis, previously wired on the client (api.getGapAnalysis())
+  // but never surfaced on any page.
+  const [gaps, setGaps] = useState([]);
+  const [gapsLoading, setGapsLoading] = useState(true);
+  const [expectedMinimum, setExpectedMinimum] = useState(3);
+
   const loadCameras = () => {
     setLoading(true);
     api
@@ -57,9 +67,18 @@ function CameraRegistry() {
       .finally(() => setLoading(false));
   };
 
+  const loadGaps = (minimum) => {
+    setGapsLoading(true);
+    api
+      .getGapAnalysis(minimum)
+      .then((data) => setGaps(Array.isArray(data.gaps) ? data.gaps : []))
+      .finally(() => setGapsLoading(false));
+  };
+
   useEffect(() => {
     loadCameras();
-  }, []);
+    loadGaps(expectedMinimum);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -121,6 +140,7 @@ function CameraRegistry() {
       ai_profile: newCameraForm.ai_profile,
       latitude: newCameraForm.latitude === '' ? null : parseFloat(newCameraForm.latitude),
       longitude: newCameraForm.longitude === '' ? null : parseFloat(newCameraForm.longitude),
+      rtsp_url: newCameraForm.rtsp_url || null,
     };
 
     setSubmitting(true);
@@ -130,6 +150,7 @@ function CameraRegistry() {
       showToast(`Registered ${generatedUid} successfully.`);
       setNewCameraForm(emptyNewCameraForm);
       loadCameras();
+      loadGaps(expectedMinimum);
     } catch (err) {
       setFormError(err.message || 'Failed to register camera.');
     } finally {
@@ -267,13 +288,13 @@ function CameraRegistry() {
       <div className="registry-header">
         <div className="registry-header-left">
           <div className="registry-title-row">
-            <h1 className="registry-title">CCTV Registry</h1>
+            <h1 className="registry-title">{t('registry_title')}</h1>
             <span className="registry-pipeline-badge">
               Pipeline 1 · Registry & GIS Foundation
             </span>
           </div>
           <p className="registry-subtitle">
-            Centralised inventory of all CCTV assets across Gujarat public safety jurisdictions
+            {t('registry_subtitle')}
           </p>
         </div>
 
@@ -287,7 +308,7 @@ function CameraRegistry() {
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            <span>Add New Camera</span>
+            <span>{t('registry_add_camera')}</span>
           </button>
         </div>
       </div>
@@ -391,6 +412,65 @@ function CameraRegistry() {
           setActiveTab('Details');
         }}
       />
+
+      {/* 3.5 Coverage gap-analysis -- Model 1's mandatory "gap-analysis report"
+          (prd.md §0.1), real GET /api/cameras/gap-analysis, previously wired on the
+          client but never surfaced on any page. */}
+      <div className="gap-analysis-panel">
+        <div className="gap-analysis-header">
+          <div>
+            <h2 className="gap-analysis-title">Coverage Gap Analysis</h2>
+            <p className="gap-analysis-subtitle">
+              District &times; department combinations below the expected minimum camera count.
+            </p>
+          </div>
+          <label className="gap-analysis-threshold">
+            <span>Expected minimum per district/dept</span>
+            <input
+              type="number"
+              min="1"
+              value={expectedMinimum}
+              onChange={(e) => {
+                const val = Math.max(1, Number(e.target.value) || 1);
+                setExpectedMinimum(val);
+                loadGaps(val);
+              }}
+            />
+          </label>
+        </div>
+
+        {gapsLoading ? (
+          <p className="gap-analysis-empty">Loading gap analysis…</p>
+        ) : gaps.length === 0 ? (
+          <p className="gap-analysis-empty">
+            No shortfalls — every district/department combination with at least one camera meets the
+            expected minimum of {expectedMinimum}.
+          </p>
+        ) : (
+          <table className="gap-analysis-table">
+            <thead>
+              <tr>
+                <th>District</th>
+                <th>Department</th>
+                <th>Current</th>
+                <th>Expected Min</th>
+                <th>Shortfall</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gaps.map((g) => (
+                <tr key={`${g.district}-${g.department}`}>
+                  <td>{g.district}</td>
+                  <td>{g.department}</td>
+                  <td>{g.camera_count}</td>
+                  <td>{g.expected_minimum}</td>
+                  <td className="gap-shortfall-cell">{g.shortfall}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
       {/* 4. Detail Panel / Modal */}
       {selectedCamera && (
@@ -783,6 +863,17 @@ function CameraRegistry() {
                       className="form-input"
                       value={newCameraForm.longitude}
                       onChange={(e) => setNewCameraForm({ ...newCameraForm, longitude: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-group full-width">
+                    <label className="form-label">RTSP URL (optional)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="rtsp://user:pass@host:port/stream/id -- required to start a live feed"
+                      value={newCameraForm.rtsp_url}
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, rtsp_url: e.target.value })}
                     />
                   </div>
                 </div>

@@ -3,6 +3,7 @@ import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
 import DataTable from '../components/DataTable';
 import api from '../api/client';
+import { useLanguage } from '../i18n/LanguageContext';
 import './Watchlists.css';
 
 const CATEGORIES = [
@@ -18,6 +19,7 @@ const RISK_VARIANT = { CRITICAL: 'red', HIGH: 'amber', MEDIUM: 'blue', LOW: 'gra
 const emptyForm = { identifier: '', category: 'STOLEN_VEHICLE', description: '', risk_level: 'MEDIUM', source: '', added_by: '' };
 
 function Watchlists() {
+  const { t } = useLanguage();
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('ALL');
@@ -105,8 +107,8 @@ function Watchlists() {
       <header className="watchlists-header">
         <div>
           <span className="section-eyebrow">INTELLIGENCE / WATCHLISTS</span>
-          <h1>Watchlists</h1>
-          <p>Manage the identifiers the alert engine matches every incoming plate/person read against.</p>
+          <h1>{t('watchlists_title')}</h1>
+          <p>{t('watchlists_subtitle')}</p>
         </div>
         <button type="button" className="watchlists-add-btn" onClick={() => setShowForm((v) => !v)}>
           {showForm ? 'Cancel' : '+ Add entry'}

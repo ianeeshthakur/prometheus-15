@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLanguage } from '../i18n/LanguageContext';
 import './AccessibilityBar.css';
 
 const FONT_STEPS = ['sm', 'md', 'lg']; // three fixed steps, per docs/frontend.md §1
@@ -12,7 +13,7 @@ function loadPrefs() {
   } catch {
     // localStorage can throw/be unavailable -- fall back to defaults, not a crash.
   }
-  return { fontStep: 'md', highContrast: false, language: 'en' };
+  return { fontStep: 'md', highContrast: false };
 }
 
 function savePrefs(prefs) {
@@ -27,13 +28,18 @@ function savePrefs(prefs) {
  * graded requirement (docs/prd.md §4, docs/frontend.md §1/§2). Font-size stepper
  * scales every rem-based measurement in the app (html { font-size }), high-contrast
  * swaps CSS custom properties to an AAA-checked palette, and skip-to-content jumps
- * past the nav to #main-content (App.jsx). Language switch is real (sets
- * document.documentElement.lang and is read by any component that wants it, e.g.
- * Investigation.jsx's voice briefing) but honest about its actual scope: most UI
- * copy in client/ isn't translated yet -- this doesn't silently claim full
- * localization it doesn't have. */
-function AccessibilityBar({ language, onLanguageChange }) {
+ * past the nav to #main-content (App.jsx).
+ *
+ * Language switch is real, via LanguageContext (src/i18n/): it sets
+ * document.documentElement.lang AND retranslates the app shell (Sidebar, Topbar) and
+ * every page's header/subtitle through translations.js. Honest about its actual
+ * scope, documented in translations.js's own header comment: this covers shell
+ * chrome, not dynamic data (camera names, alert descriptions, etc.) or every label
+ * in every modal -- claiming full localization it doesn't have would be worse than
+ * being clear about what's covered. */
+function AccessibilityBar() {
   const [prefs, setPrefs] = useState(loadPrefs);
+  const { language, setLanguage } = useLanguage();
 
   useEffect(() => {
     document.documentElement.style.setProperty('--font-scale', FONT_SCALE[prefs.fontStep]);
@@ -61,11 +67,10 @@ function AccessibilityBar({ language, onLanguageChange }) {
         <label className="a11y-lang-select">
           <span className="a11y-btn-label">Language</span>
           <select
-            value={language ?? prefs.language}
+            value={language}
             onChange={(e) => {
-              setPrefs((p) => ({ ...p, language: e.target.value }));
+              setLanguage(e.target.value);
               document.documentElement.lang = e.target.value;
-              if (onLanguageChange) onLanguageChange(e.target.value);
             }}
           >
             <option value="en">English</option>

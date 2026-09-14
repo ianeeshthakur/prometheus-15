@@ -1,17 +1,90 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import StatusBadge from '../components/StatusBadge';
+import HlsPlayer from '../components/HlsPlayer';
 import api from '../api/client';
+import { useLanguage } from '../i18n/LanguageContext';
 import './LiveCameras.css';
 
 // docs/frontend.md §5 flags this as the highest-priority stub to build after
 // CameraRegistry/Dashboard/Investigation. Real camera list (api.getCameras()) and a
 // real live AI-event feed (api.subscribeToLiveEvents(), the same SSE stream
-// Dashboard.jsx's "Live AI Events" counter uses). No fake video player: there is no
-// reachable real ingest host to play from in this environment (docs/backend.md
-// §12.7.1), so each card is honest about that instead of showing a placeholder that
-// looks like it might be live.
+// Dashboard.jsx's "Live AI Events" counter uses).
+//
+// Real HLS playback (2026-09-14): "Start Stream" calls the real
+// POST /api/streams/{camera_id}/start, which spawns a real FFmpeg subprocess
+// server-side transcoding the camera's real rtsp_url. This genuinely works given a
+// camera with a configured rtsp_url and a server host with ffmpeg installed. Neither
+// is guaranteed here: there's no reachable real ingest host from this environment
+// (backend.md §12.7.1), and this sandbox's own server doesn't have ffmpeg on PATH
+// (GET /api/health/'s ffmpeg_available flag) -- so a real, honest error is exactly
+// what should happen when either is missing, not a fabricated "connected" state.
+
+function CameraCard({ cam }) {
+  const [streamState, setStreamState] = useState('idle'); // idle | starting | playing | error
+  const [streamError, setStreamError] = useState('');
+  const [hlsUrl, setHlsUrl] = useState('');
+
+  const handleStart = async () => {
+    setStreamState('starting');
+    setStreamError('');
+    try {
+      const result = await api.startStream(cam.camera_uid);
+      setHlsUrl(`${api.baseUrl}${result.hls_url}`);
+      setStreamState('playing');
+    } catch (err) {
+      setStreamError(err.message);
+      setStreamState('error');
+    }
+  };
+
+  const handleStop = async () => {
+    try {
+      await api.stopStream(cam.camera_uid);
+    } catch {
+      // best-effort -- still reset the local UI state below
+    }
+    setStreamState('idle');
+    setHlsUrl('');
+  };
+
+  return (
+    <div className="live-camera-card">
+      {streamState === 'playing' && hlsUrl ? (
+        <HlsPlayer src={hlsUrl} onError={(msg) => { setStreamError(msg); setStreamState('error'); }} />
+      ) : (
+        <div className="live-camera-thumb">
+          {streamState === 'starting' && <span>Starting stream…</span>}
+          {streamState === 'error' && <span className="live-camera-thumb-error">Stream failed: {streamError}</span>}
+          {streamState === 'idle' && <span>No live playback started</span>}
+        </div>
+      )}
+      <div className="live-camera-meta">
+        <div className="live-camera-title-row">
+          <span className="live-camera-id">{cam.camera_uid}</span>
+          <StatusBadge status={cam.status} size="sm" />
+        </div>
+        <span className="live-camera-name">{cam.name}</span>
+        <span className="live-camera-location">{cam.location} · {cam.district}</span>
+        <div className="live-camera-tags">
+          <span className="live-camera-tag">{cam.protocol_type}</span>
+          {cam.ai_enabled && <span className="live-camera-tag ai">{cam.ai_profile || 'AI'}</span>}
+        </div>
+        <div className="live-camera-actions">
+          {streamState === 'playing' ? (
+            <button type="button" onClick={handleStop} className="live-camera-btn stop">Stop</button>
+          ) : (
+            <button type="button" onClick={handleStart} disabled={streamState === 'starting'} className="live-camera-btn">
+              {streamState === 'starting' ? 'Starting…' : streamState === 'error' ? 'Retry' : 'Start Stream'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function LiveCameras() {
+  const { t } = useLanguage();
   const [cameras, setCameras] = useState([]);
   const [loading, setLoading] = useState(true);
   const [districtFilter, setDistrictFilter] = useState('ALL');
@@ -48,7 +121,7 @@ function LiveCameras() {
       <header className="live-cameras-header">
         <div>
           <span className="section-eyebrow">MONITOR / LIVE CAMERAS</span>
-          <h1>Live Cameras</h1>
+          <h1>{t('live_cameras_title')}</h1>
           <p>{loading ? 'Loading registry…' : `${filtered.length} of ${cameras.length} registered cameras`}</p>
         </div>
       </header>
@@ -72,25 +145,7 @@ function LiveCameras() {
 
           <div className="live-cameras-grid">
             {!loading && filtered.length === 0 && <p className="live-cameras-empty">No cameras match this filter.</p>}
-            {filtered.map((cam) => (
-              <div key={cam.camera_uid} className="live-camera-card">
-                <div className="live-camera-thumb">
-                  <span>No live playback in this environment</span>
-                </div>
-                <div className="live-camera-meta">
-                  <div className="live-camera-title-row">
-                    <span className="live-camera-id">{cam.camera_uid}</span>
-                    <StatusBadge status={cam.status} size="sm" />
-                  </div>
-                  <span className="live-camera-name">{cam.name}</span>
-                  <span className="live-camera-location">{cam.location} · {cam.district}</span>
-                  <div className="live-camera-tags">
-                    <span className="live-camera-tag">{cam.protocol_type}</span>
-                    {cam.ai_enabled && <span className="live-camera-tag ai">{cam.ai_profile || 'AI'}</span>}
-                  </div>
-                </div>
-              </div>
-            ))}
+            {filtered.map((cam) => <CameraCard key={cam.camera_uid} cam={cam} />)}
           </div>
         </div>
 

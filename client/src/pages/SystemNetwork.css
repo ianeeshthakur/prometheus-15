@@ -1,0 +1,23 @@
+.system-network-page { display: flex; flex-direction: column; gap: 18px; padding: 4px; }
+.sn-header h1 { margin: 4px 0 4px; font-size: 1.4rem; color: var(--text-primary); }
+.sn-header p { margin: 0; color: var(--text-secondary); font-size: 0.85rem; }
+
+.sn-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border-color); padding-bottom: 2px; }
+.sn-tabs button { background: transparent; border: none; border-bottom: 2px solid transparent; padding: 10px 4px; margin-right: 16px; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; }
+.sn-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+.sn-tab-content { border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; background: var(--bg-primary); }
+
+.sn-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 0.8rem; color: var(--text-secondary); }
+.sn-toolbar button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 0.78rem; cursor: pointer; }
+.sn-toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+.sn-toolbar select { border: 1px solid var(--border-color); border-radius: 6px; padding: 7px 10px; font-size: 0.8rem; background: var(--bg-primary); color: var(--text-primary); min-width: 260px; }
+
+.sn-note { font-size: 0.78rem; color: var(--text-secondary); margin: 0 0 14px; }
+.sn-empty { color: var(--text-secondary); font-size: 0.82rem; line-height: 1.6; }
+.sn-permission-error { color: #c62828; font-size: 0.82rem; }
+
+.sn-component-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.sn-component-card, .sn-result-card { border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; background: var(--bg-secondary); }
+.sn-component-header { display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; font-weight: 600; color: var(--text-primary); font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.sn-component-detail { margin: 6px 0 0; font-size: 0.75rem; color: var(--text-secondary); }

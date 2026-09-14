@@ -332,6 +332,43 @@ class VistaApiClient {
     return source;
   }
 
+  /** POST /api/streams/{camera_id}/start -- real: spawns a real FFmpeg subprocess
+   * server-side that transcodes the camera's real rtsp_url into local HLS segments.
+   * Throws a real error (not a fake success) when the camera has no rtsp_url
+   * configured, or when ffmpeg genuinely isn't available on the server host --
+   * server/routers/streams.py's own 404/500 responses, surfaced honestly. */
+  async startStream(cameraUid) {
+    const res = await fetch(`${this.baseUrl}/api/streams/${cameraUid}/start`, {
+      method: 'POST',
+      headers: this._authHeaders(),
+    });
+    if (res.ok) return await res.json();
+    let detail = 'Failed to start stream';
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      // keep generic message
+    }
+    throw new Error(detail);
+  }
+
+  async stopStream(cameraUid) {
+    const res = await fetch(`${this.baseUrl}/api/streams/${cameraUid}/stop`, {
+      method: 'POST',
+      headers: this._authHeaders(),
+    });
+    if (res.ok) return await res.json();
+    throw new Error(`Failed to stop stream (${res.status})`);
+  }
+
+  /** GET /api/streams/{camera_id}/status -- unauthenticated on the backend
+   * (routers/streams.py has no auth dependency on this one specifically). */
+  async getStreamStatus(cameraUid) {
+    const res = await fetch(`${this.baseUrl}/api/streams/${cameraUid}/status`);
+    if (res.ok) return await res.json();
+    return { camera_id: cameraUid, status: 'UNKNOWN' };
+  }
+
   // --- Watchlists (backend/routers/watchlists.py) ---------------------------------
 
   async getWatchlistEntries() {

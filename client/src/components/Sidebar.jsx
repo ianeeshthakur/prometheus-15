@@ -1,10 +1,11 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { useLanguage } from '../i18n/LanguageContext';
 import './Sidebar.css';
 
 const navItems = [
   {
-    label: 'Dashboard',
+    labelKey: 'nav_dashboard',
     path: '/',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -16,7 +17,7 @@ const navItems = [
     ),
   },
   {
-    label: 'Model 1: Registry & GIS',
+    labelKey: 'nav_model1',
     path: '/model-1',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -27,7 +28,7 @@ const navItems = [
     ),
   },
   {
-    label: 'Model 2: Unified Viewing',
+    labelKey: 'nav_model2',
     path: '/model-2',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -38,7 +39,7 @@ const navItems = [
     ),
   },
   {
-    label: 'Model 3: VMS Federation',
+    labelKey: 'nav_model3',
     path: '/model-3',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -51,7 +52,7 @@ const navItems = [
     ),
   },
   {
-    label: 'Model 4: Central VMS/AI',
+    labelKey: 'nav_model4',
     path: '/model-4',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -69,7 +70,7 @@ const navItems = [
     ),
   },
   {
-    label: 'Investigation & Alerts',
+    labelKey: 'nav_investigation',
     path: '/investigation',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -80,7 +81,7 @@ const navItems = [
     ),
   },
   {
-    label: 'Watchlists',
+    labelKey: 'nav_watchlists',
     path: '/watchlists',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -90,7 +91,19 @@ const navItems = [
     ),
   },
   {
-    label: 'Settings',
+    labelKey: 'nav_system',
+    path: '/system',
+    icon: (
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+        <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+        <line x1="6" y1="6" x2="6.01" y2="6" />
+        <line x1="6" y1="18" x2="6.01" y2="18" />
+      </svg>
+    ),
+  },
+  {
+    labelKey: 'nav_settings',
     path: '/settings',
     icon: (
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -102,6 +115,7 @@ const navItems = [
 ];
 
 function Sidebar() {
+  const { t } = useLanguage();
   return (
     <aside className="sidebar">
       <nav className="sidebar-nav">
@@ -116,7 +130,7 @@ function Sidebar() {
                 }
               >
                 <span className="sidebar-icon">{item.icon}</span>
-                <span className="sidebar-text">{item.label}</span>
+                <span className="sidebar-text">{t(item.labelKey)}</span>
               </NavLink>
             </li>
           ))}

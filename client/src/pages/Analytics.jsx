@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
+import { useLanguage } from '../i18n/LanguageContext';
 import './Analytics.css';
 
 // docs/prd.md §0.1's submission deliverable: "a report showing detected
@@ -50,6 +51,7 @@ function BreakdownBar({ label, count, max, color }) {
 }
 
 function Analytics() {
+  const { t } = useLanguage();
   const [alerts, setAlerts] = useState([]);
   const [cameras, setCameras] = useState([]);
   const [watchlist, setWatchlist] = useState([]);
@@ -95,7 +97,7 @@ function Analytics() {
       <header className="analytics-header">
         <div>
           <span className="section-eyebrow">INTELLIGENCE / ANALYTICS & REPORTS</span>
-          <h1>Analytics & Reports</h1>
+          <h1>{t('analytics_title')}</h1>
           <p>{loading ? 'Loading…' : `${alerts.length} alerts across ${cameras.length} registered cameras`}</p>
         </div>
         <button

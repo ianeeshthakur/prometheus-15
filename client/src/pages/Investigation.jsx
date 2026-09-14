@@ -3,6 +3,7 @@ import { MapContainer, Marker, Polyline, TileLayer, Tooltip } from 'react-leafle
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from '../api/client';
+import { useLanguage } from '../i18n/LanguageContext';
 import './Investigation.css';
 
 // This page used to render 4 hardcoded incidents with a fabricated "nearest patrol
@@ -102,6 +103,7 @@ function RouteMapView({ sightings, playbackStep }) {
 }
 
 function Investigation() {
+  const { t } = useLanguage();
   const [alerts, setAlerts] = useState([]);
   const [investigations, setInvestigations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -201,8 +203,8 @@ function Investigation() {
       <header className="investigation-header">
         <div>
           <span className="section-eyebrow">GUJARAT COMMAND NETWORK / LIVE RESPONSE</span>
-          <h1>Incidents & Alerts</h1>
-          <p>Triage alerts, open investigations, and trace an entity across cameras.</p>
+          <h1>{t('investigation_title')}</h1>
+          <p>{t('investigation_subtitle')}</p>
         </div>
         <div className="response-status"><span />{loading ? 'Loading…' : `${filteredAlerts.length} shown`}</div>
       </header>

@@ -4,6 +4,7 @@ import CameraMap from '../components/CameraMap';
 import TelemetryTicker from '../components/TelemetryTicker';
 import { DEPARTMENT_COLORS } from '../data/cameras';
 import api from '../api/client';
+import { useLanguage } from '../i18n/LanguageContext';
 import './Dashboard.css';
 
 // docs/frontend.md flags CameraMap.jsx as a known remaining gap: it's a large
@@ -498,6 +499,7 @@ function CommandPriorityStrip({ alerts, onAcknowledge }) {
 // ============================================================================
 
 function Dashboard() {
+  const { t } = useLanguage();
   const clock = useLiveClock();
   const [cameras, setCameras] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -556,11 +558,11 @@ function Dashboard() {
       <section className="dashboard-hero">
         <div className="hero-left">
           <div className="hero-title-row">
-            <h1 className="hero-title">Command Overview</h1>
+            <h1 className="hero-title">{t('dashboard_title')}</h1>
             <span className="hero-badge">Enterprise VMS</span>
           </div>
           <p className="hero-desc">
-            Unified telemetry stream, live GIS surveillance coverage, and real-time AI incident detection.
+            {t('dashboard_subtitle')}
           </p>
         </div>
 
