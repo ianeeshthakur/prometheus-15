@@ -92,3 +92,37 @@
     background: rgba(15, 23, 42, 0.4);
   }
 }
+
+/* Nav group labels */
+.sidebar-group-label {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-tertiary, #94a3b8);
+  padding: 10px 14px 4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-group {
+  margin-bottom: 4px;
+}
+
+/* Pipeline P1/P2/P3 micro-badges in sidebar */
+.sidebar-pipeline-tag {
+  margin-left: auto;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.1);
+  border: 1px solid rgba(2, 132, 199, 0.22);
+  border-radius: 3px;
+  padding: 1px 5px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+

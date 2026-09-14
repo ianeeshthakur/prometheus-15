@@ -137,9 +137,12 @@ function LiveCameras() {
     <div className="live-cameras-page">
       <header className="live-cameras-header">
         <div>
-          <span className="section-eyebrow">MONITOR / LIVE CAMERAS</span>
+          <span className="section-eyebrow">CAMERA INTELLIGENCE / PIPELINE 2</span>
           <h1>{t('live_cameras_title')}</h1>
-          <p>{loading ? 'Loading registry…' : `${filtered.length} of ${cameras.length} registered cameras`}</p>
+          <p>
+            {loading ? 'Loading registry…' : `${filtered.length} of ${cameras.length} registered cameras`}
+            {' '}· Protocol adapter boundary — live acquisition via real HLS/RTSP if backend &amp; FFmpeg configured.
+          </p>
         </div>
       </header>
 

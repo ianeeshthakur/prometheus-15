@@ -15,39 +15,45 @@ export const LANGUAGES = ['en', 'hi', 'gu'];
 export const translations = {
   en: {
     nav_dashboard: 'Dashboard',
-    nav_model1: 'Model 1: Registry & GIS',
-    nav_model2: 'Model 2: Unified Viewing',
-    nav_model3: 'Model 3: VMS Federation',
-    nav_model4: 'Model 4: Central VMS/AI',
-    nav_investigation: 'Investigation & Alerts',
+    nav_model1: 'Camera Registry',
+    nav_model2: 'Unified Video',
+    nav_ai_analytics: 'AI Analytics',
+    nav_protocol_health: 'Protocol Health',
+    nav_investigation: 'Alerts & Investigations',
     nav_watchlists: 'Watchlists',
-    nav_system: 'System & Network',
+    nav_system: 'System Health',
     nav_settings: 'Settings',
 
     topbar_brand: 'G-VISTA',
-    topbar_state_tag: 'GUJARAT POLICE & COMMAND',
+    topbar_state_tag: 'GUJARAT POLICE',
     topbar_subtitle: 'Statewide Video Intelligence & Investigation Platform',
     topbar_logout: 'Log out',
 
-    dashboard_title: 'Command Overview',
-    dashboard_subtitle: 'Unified telemetry stream, live GIS surveillance coverage, and real-time AI incident detection.',
+    dashboard_title: 'Command Center',
+    dashboard_subtitle: 'Statewide surveillance overview — live GIS coverage, AI detections, and active incident triage.',
 
-    registry_title: 'CCTV Registry',
-    registry_subtitle: 'Centralised inventory of all CCTV assets across Gujarat public safety jurisdictions',
-    registry_add_camera: 'Add New Camera',
+    registry_title: 'Camera Registry',
+    registry_subtitle: 'Centralised inventory of CCTV assets across Gujarat — P1 Registry & GIS',
+    registry_add_camera: 'Add Camera',
 
-    live_cameras_title: 'Live Cameras',
+    live_cameras_title: 'Unified Video',
 
-    investigation_title: 'Incidents & Alerts',
-    investigation_subtitle: 'Triage alerts, open investigations, and trace an entity across cameras.',
+    ai_analytics_title: 'AI Video Analytics',
+    ai_analytics_subtitle: 'Pipeline 3 — Real-time license plate detection and frame intelligence.',
+
+    protocol_health_title: 'Protocol Health',
+    protocol_health_subtitle: 'Pipeline 2 — Protocol adapter status and integration diagnostics.',
+
+    investigation_title: 'Alerts & Investigations',
+    investigation_subtitle: 'Triage alerts, open investigation cases, and trace entities across cameras.',
 
     watchlists_title: 'Watchlists',
-    watchlists_subtitle: 'Manage the identifiers the alert engine matches every incoming plate/person read against.',
+    watchlists_subtitle: 'Manage identifiers the AI alert engine matches against every incoming plate/entity detection.',
 
     analytics_title: 'Analytics & Reports',
 
-    system_network_title: 'System & Network',
-    system_network_subtitle: 'Pipeline health, per-camera adapter diagnostics, and integration status.',
+    system_network_title: 'System Health',
+    system_network_subtitle: 'Backend health, pipeline status, per-camera adapter diagnostics.',
 
     admin_title: 'Administration',
     admin_subtitle: 'User & role management, audit trail, and the facial-recognition privacy gate.',
@@ -63,13 +69,13 @@ export const translations = {
 
   hi: {
     nav_dashboard: 'डैशबोर्ड',
-    nav_model1: 'मॉडल 1: रजिस्ट्री और GIS',
-    nav_model2: 'मॉडल 2: एकीकृत दृश्य',
-    nav_model3: 'मॉडल 3: VMS फेडरेशन',
-    nav_model4: 'मॉडल 4: केंद्रीय VMS/AI',
-    nav_investigation: 'जांच और अलर्ट',
+    nav_model1: 'कैमरा रजिस्ट्री',
+    nav_model2: 'एकीकृत वीडियो',
+    nav_ai_analytics: 'AI एनालिटिक्स',
+    nav_protocol_health: 'प्रोटोकॉल हेल्थ',
+    nav_investigation: 'अलर्ट और जांच',
     nav_watchlists: 'वॉचलिस्ट',
-    nav_system: 'सिस्टम और नेटवर्क',
+    nav_system: 'सिस्टम स्वास्थ्य',
     nav_settings: 'सेटिंग्स',
 
     topbar_brand: 'जी-विस्टा',
@@ -111,13 +117,13 @@ export const translations = {
 
   gu: {
     nav_dashboard: 'ડેશબોર્ડ',
-    nav_model1: 'મોડલ 1: રજિસ્ટ્રી અને GIS',
-    nav_model2: 'મોડલ 2: એકીકૃત દૃશ્ય',
-    nav_model3: 'મોડલ 3: VMS ફેડરેશન',
-    nav_model4: 'મોડલ 4: સેન્ટ્રલ VMS/AI',
-    nav_investigation: 'તપાસ અને એલર્ટ',
+    nav_model1: 'કેમેરા રજિસ્ટ્રી',
+    nav_model2: 'એકીકૃત વિડિઓ',
+    nav_ai_analytics: 'AI એનાલિટિક્સ',
+    nav_protocol_health: 'પ્રોટોકોલ હેલ્થ',
+    nav_investigation: 'એલર્ટ અને તપાસ',
     nav_watchlists: 'વૉચલિસ્ટ',
-    nav_system: 'સિસ્ટમ અને નેટવર્ક',
+    nav_system: 'સિસ્ટમ આરોગ્ય',
     nav_settings: 'સેટિંગ્સ',
 
     topbar_brand: 'જી-વિસ્ટા',

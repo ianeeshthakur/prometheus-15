@@ -1,0 +1,252 @@
+/* Protocol Health Page — Pipeline 2 */
+
+.protocol-health-page {
+  padding: 0 0 40px;
+}
+
+.protocol-health-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 28px 20px;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.protocol-health-header h1 {
+  margin: 6px 0 4px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.protocol-health-header p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.proto-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.07);
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  border-radius: 6px;
+  padding: 10px 14px;
+  max-width: 340px;
+  line-height: 1.5;
+}
+
+.protocol-health-body {
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Protocol Summary Cards */
+.protocol-summary-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.protocol-summary-card {
+  flex: 1;
+  min-width: 140px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.protocol-summary-name {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.protocol-summary-count {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  margin: 2px 0;
+}
+
+.protocol-summary-desc {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Table Controls */
+.proto-table-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.proto-search {
+  flex: 1;
+  min-width: 200px;
+  padding: 7px 12px;
+  font-size: 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.proto-filter {
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.proto-count {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Protocol Table */
+.proto-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.proto-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.proto-table thead {
+  background: var(--bg-secondary, #f8fafc);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.proto-table th {
+  text-align: left;
+  padding: 9px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.proto-td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.proto-table tbody tr:last-child .proto-td {
+  border-bottom: none;
+}
+
+.proto-table tbody tr:hover {
+  background: var(--bg-secondary, #f8fafc);
+}
+
+.proto-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(2, 132, 199, 0.1);
+  color: #0284c7;
+  border: 1px solid rgba(2, 132, 199, 0.22);
+  white-space: nowrap;
+}
+
+.proto-ai-on {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.proto-ai-off {
+  color: var(--text-tertiary, #94a3b8);
+}
+
+.proto-not-checked {
+  color: var(--text-tertiary, #94a3b8);
+}
+
+.proto-check-btn {
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.proto-check-btn:hover:not(:disabled) {
+  background: var(--bg-secondary, #f1f5f9);
+}
+
+.proto-check-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.proto-check-error {
+  display: block;
+  font-size: 0.7rem;
+  color: #dc2626;
+  margin-top: 3px;
+  max-width: 160px;
+}
+
+.proto-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 24px;
+  font-size: 0.85rem;
+}
+
+/* Disclaimer */
+.proto-disclaimer {
+  background: var(--bg-secondary, #f8fafc);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 14px 18px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.proto-disclaimer p {
+  margin: 0 0 8px;
+}
+
+.proto-disclaimer p:last-child {
+  margin: 0;
+}

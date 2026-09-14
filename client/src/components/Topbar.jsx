@@ -56,21 +56,19 @@ function Topbar({ onToggleSidebar = () => {} }) {
       </div>
 
       <div className="topbar-center">
-        <div className="pipeline-indicator-group" title="All 5 Backend Video Intelligence Pipelines Running">
-          <span className="pulse-beacon" />
-          <span className="pipeline-label">PIPELINES 1–5 ACTIVE</span>
+        <div className="pipeline-indicator-group" title="G-VISTA Pipeline Status">
           <span className="pipeline-chips">
-            <span className="p-chip" title="Pipeline 1: Camera Registry & GIS">P1</span>
-            <span className="p-chip" title="Pipeline 2: Protocol Normalization">P2</span>
-            <span className="p-chip" title="Pipeline 3: AI Video Analytics">P3</span>
-            <span className="p-chip" title="Pipeline 4: Intelligence & Correlation">P4</span>
-            <span className="p-chip" title="Pipeline 5: Operations & Investigation">P5</span>
+            <span className="p-chip p-chip--impl" title="Pipeline 1: Camera Registry &amp; GIS — Implemented">P1</span>
+            <span className="p-chip p-chip--impl" title="Pipeline 2: Protocol Adapters — Implemented">P2</span>
+            <span className="p-chip p-chip--partial" title="Pipeline 3: AI Analytics — Partial (YOLO plate detector REAL; vehicle/OCR not configured)">P3</span>
+            <span className="p-chip p-chip--arch" title="Pipeline 4: Intelligence &amp; Correlation — Architecture/Demo">P4</span>
+            <span className="p-chip p-chip--arch" title="Pipeline 5: Operations &amp; Investigation — Demo">P5</span>
           </span>
         </div>
 
         <div className={`engine-mode-pill ${backendMode === 'LIVE BACKEND' ? 'live' : 'mock'}`}>
           <span className="mode-dot" />
-          <span>{backendMode}</span>
+          <span>{backendMode === 'LIVE BACKEND' ? 'LIVE BACKEND' : 'DEMO MODE'}</span>
         </div>
       </div>
 
