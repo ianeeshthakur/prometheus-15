@@ -4,7 +4,7 @@ Governs backend architecture, the camera/adapter/database layer, APIs, security 
 
 Stack: **FastAPI + SQLAlchemy**, SQLite for local dev → **PostgreSQL + PostGIS** for anything spatial (Model 1 registry, gap-analysis).
 
-**Ported from `contrib/aneesh/backend/` on 2026-09-12** (see `docs/prd.md` §15 decision log). That folder held a real, working FastAPI backend (~2,100 lines) from the pre-rebuild `prometheus-1` migration; the adapters, AI orchestrator, camera registry, video streaming, and tests below are now live in `backend/` itself, not just archived reference. Three things were fixed, not copied verbatim, during the port:
+**Ported from `contrib/aneesh/backend/` on 2026-09-12** (see `docs/prd.md` §15 decision log). That folder held a real, working FastAPI backend (~2,100 lines) from the pre-rebuild `prometheus-1` migration; the adapters, AI orchestrator, camera registry, video streaming, and tests below are now live in `server/` itself, not just archived reference. Three things were fixed, not copied verbatim, during the port:
 
 1. **The legacy in-memory `camera_registry` module was dropped**, not ported — it simulated one hardcoded demo camera from env vars, which duplicates and conflicts with the DB-backed Model 1 registry as single source of truth. The real replacement (an `/api/ingest` catalogue-sync service, §2) is still unbuilt — see §12.
 2. **`routers/streams.py` was genuinely broken in the source** — it imported `from ai.detection_service import detection_service, ocr_service`, a module that was never committed anywhere in the migration, so the file would have raised `ImportError` on startup. The ported version wires the real `AIOrchestrator` (`ai/orchestrator.py`) instead.
@@ -20,15 +20,15 @@ The hackathon defines four reference integration models and explicitly allows �
 
 **Model 1 (mandatory) + Model 2 (core) + Model 4 elements (analytics layer).**
 
-- **Model 1 — Centralised CCTV Registry & GIS Foundation** (compulsory for every submission): a DB-backed camera registry (`backend/models/camera.py`, `backend/services/camera_service.py`) is the single source of truth for every camera regardless of which department or protocol owns it. It is metadata/registry-only — it does not itself stream video — and is paired below with Model 2 for the actual video path.
-- **Model 2 — Unified Viewing & Selective Analytics** (direct integration, no middleware/federation layer): `backend/adapters/` (`rtsp.py`, `hls.py`, `onvif.py`, `vendor.py`, behind `factory.py`) talk directly to each department's cameras/VMS per-protocol. This matches Model 2's explicit "no intermediate middleware" requirement.
-- **Model 4 elements — Central AI Platform**: the AI orchestrator and intelligence layer (`backend/ai/orchestrator.py`, `backend/intelligence/`) form a centralized analytics layer sitting behind the direct (Model 2) integrations, so detections from every department flow into one alerting/investigation surface — the part of Model 4 worth keeping without adopting its "one consolidated VMS" storage/recording mandate, which is out of scope for a hackathon pilot.
+- **Model 1 — Centralised CCTV Registry & GIS Foundation** (compulsory for every submission): a DB-backed camera registry (`server/models/camera.py`, `server/services/camera_service.py`) is the single source of truth for every camera regardless of which department or protocol owns it. It is metadata/registry-only — it does not itself stream video — and is paired below with Model 2 for the actual video path.
+- **Model 2 — Unified Viewing & Selective Analytics** (direct integration, no middleware/federation layer): `server/adapters/` (`rtsp.py`, `hls.py`, `onvif.py`, `vendor.py`, behind `factory.py`) talk directly to each department's cameras/VMS per-protocol. This matches Model 2's explicit "no intermediate middleware" requirement.
+- **Model 4 elements — Central AI Platform**: the AI orchestrator and intelligence layer (`server/ai/orchestrator.py`, `server/intelligence/`) form a centralized analytics layer sitting behind the direct (Model 2) integrations, so detections from every department flow into one alerting/investigation surface — the part of Model 4 worth keeping without adopting its "one consolidated VMS" storage/recording mandate, which is out of scope for a hackathon pilot.
 
 Model 3 (VMS federation/middleware) is deliberately not adopted — it would duplicate what the adapter factory already does and contradicts Model 2's "no middleware" requirement, which is the model we're pairing with Model 1.
 
 ## 2. The real ingest API (hackathon simulated dataset)
 
-Verified live at hackathon-provided infrastructure (prd.md §0.1). This is the actual integration target for `backend/adapters/rtsp.py` and `backend/adapters/hls.py` — not a hypothetical protocol to design against later.
+Verified live at hackathon-provided infrastructure (prd.md §0.1). This is the actual integration target for `server/adapters/rtsp.py` and `server/adapters/hls.py` — not a hypothetical protocol to design against later.
 
 - **Catalogue**: `GET /api/ingest` → camera id, location, codec, live status, stream properties, and all three stream URLs below, for each of the ~50 live-simulated feeds (drawn from 30+ real cameras × ~12h footage across Health/Police/GSRTC/Panchayat/Municipal).
 - **RTSP** — `rtsp://<host>:8554/stream/<id>` — for AI inference (OpenCV, GStreamer, FFmpeg, DeepStream). Must be consumed **over TCP**, not UDP.
@@ -44,7 +44,7 @@ Verified live at hackathon-provided infrastructure (prd.md §0.1). This is the a
 - [x] Adapter health surfaced per-camera (protocol, last heartbeat, FPS, restart count) — `routers/adapters.py` (`/adapter/health`) and `video/stream_manager.get_stream_status()` both return this; feeds frontend.md §3.2/§3.7.
 - [ ] Error reporting capturing camera id, exact URL, client + version, UTC timestamp, and client-side error log — not yet implemented as a structured format; currently just Python `logger` calls.
 
-## 3. Adapter contracts (`backend/adapters/`)
+## 3. Adapter contracts (`server/adapters/`)
 
 Every adapter normalizes its protocol into the same `NormalizedFrame` shape so the AI orchestrator (ai_pipelines.md §1) never needs to know which protocol produced a frame.
 
@@ -58,7 +58,7 @@ Every adapter normalizes its protocol into the same `NormalizedFrame` shape so t
 ## 4. Data layer
 
 - Postgres, extended with **PostGIS**, is the target for anything spatial (Model 1's GIS registry, the coverage gap-analysis report, department/district spatial queries; suggested by the hackathon's own stack list). SQLite (current `.env.example` default) stays the local-dev default.
-- [x] **Migration written**: `backend/migrations/001_postgis_setup.sql` — enables the extension, adds a `geom geometry(Point, 4326)` column alongside the existing lat/lng floats, backfills it, adds a GIST index, and a trigger to keep it in sync on insert/update. **Unverified against a real Postgres instance** — none is available in this dev environment; review/dry-run before applying anywhere that matters. Doesn't touch the SQLite path at all — `models/camera.py` keeps plain float columns regardless of which DB is configured.
+- [x] **Migration written**: `server/migrations/001_postgis_setup.sql` — enables the extension, adds a `geom geometry(Point, 4326)` column alongside the existing lat/lng floats, backfills it, adds a GIST index, and a trigger to keep it in sync on insert/update. **Unverified against a real Postgres instance** — none is available in this dev environment; review/dry-run before applying anywhere that matters. Doesn't touch the SQLite path at all — `models/camera.py` keeps plain float columns regardless of which DB is configured.
 - All 6 registry-adjacent models are now real: `camera.py` (department, district, protocol, vendor, geolocation, status, `ai_enabled`, `ai_profile`), `watchlist.py` (`WatchlistEntry` + `WatchlistMatch`), `user.py` (`User` + `AuditLogEntry`), `event.py` (`CameraEvent`), `alert.py` (`Alert`), `investigation.py` (`Investigation` + `InvestigationEvidence`), `admin_settings.py` (`FacialRecognitionAuthorization`) — each backed by a `schemas/*.py` Pydantic pair. Built during the §12.4 build-out (2026-09-12), designed against `lib/types.ts`'s frontend shapes where one already existed (`Alert`, `CameraEvent`), and against `docs/frontend.md`'s textual spec where it didn't (`Investigation` — that page was still a placeholder when this was written).
 - [x] Onboarding source is now a stored column on `Camera` (`onboarding_source`: `MANUAL` / `BULK_CSV` / `BULK_JSON` / `API_INGEST`, set server-side per endpoint, never client-settable) — closed docs/backend.md §12.5.
 - [x] **ER diagram** (below) — 7 models now have real schemas; `Timeline`/`Map trace` deliberately have no boxes of their own since they're derived queries, not tables (`models/investigation.py`'s docstring).
@@ -164,7 +164,7 @@ Camera onboarding via manual entry, CSV/JSON bulk import, and the `/api/ingest` 
 - [x] Gap-analysis query — `services/camera_service.get_gap_analysis()` + `GET /api/cameras/gap-analysis`, real coverage-shortfall report by district × department (docs/frontend.md §3.1 Row 4 / §3.7), tested.
 
 ### Pipeline 2 — Protocol normalization
-The adapter factory (`backend/adapters/factory.py`) selects RTSP/HLS/ONVIF/Vendor-SDK per camera and normalizes output into `NormalizedFrame` before handing off to the AI orchestrator.
+The adapter factory (`server/adapters/factory.py`) selects RTSP/HLS/ONVIF/Vendor-SDK per camera and normalizes output into `NormalizedFrame` before handing off to the AI orchestrator.
 - [x] Factory dispatch logic + `NormalizedFrame` schema — implemented; RTSP/HLS paths real, ONVIF/Vendor explicitly `UNSUPPORTED` per §3.
 - [x] Frame-rate pacing — `video/frame_sampler.py`'s `FrameSampler` wraps an adapter and caps reads at `AI_TARGET_FPS`, replacing the inline `asyncio.sleep()` `routers/streams.py` used to do this with.
 
@@ -176,7 +176,7 @@ Alert severity scoring, delivery, and investigation case-file CRUD backing front
 - [x] **Alert persistence** — `models/alert.py` + `services/alert_service.py`; every watchlist match and anomaly now creates a real, queryable `Alert` row (`GET/PATCH /api/alerts/*`), not just an SSE broadcast. Every event (matched or not) is separately persisted as a `CameraEvent` (`services/event_service.py`) — this is what closed the original "events broadcast live but never written to a DB table" gap.
 - [x] **Case-file CRUD + evidence** — `models/investigation.py` (`Investigation` + `InvestigationEvidence`), `services/investigation_service.py`, `routers/investigations.py`: create/list/status, evidence attach/list, `POST /api/alerts/{alert_uid}/investigation` to open a case directly from an alert (auto-sets priority from severity). Timeline and Map Trace (frontend.md §3.5) are *derived*, not separate tables — queried from `CameraEvent`/`Alert` rows matching the case's `entity`, via `intelligence/entity_graph.py`'s `trace_entity()`. That trace function is exact-identifier correlation (today: normalized plate), not graph-theoretic re-identification — appearance-based re-id (ai_pipelines.md §5 differentiator) isn't built, so that's honestly as far as "cross-camera correlation" goes right now. It's still the real shape of the hackathon's graded live vehicle-tracking test (docs/prd.md §0.1); verified end-to-end against synthetic data in `tests/test_investigations.py` since no real ingest-API camera exists to test against yet.
 
-## 6. API surface (`backend/routers/`)
+## 6. API surface (`server/routers/`)
 
 **Implemented and wired into `main.py`** (verified against the actual router files as of the port, 2026-09-12 — keep this table current, don't let it drift):
 
@@ -248,7 +248,7 @@ What this section protects against, what it explicitly doesn't yet, and why -- o
 | A compromised/weak `SECRET_KEY` in production | `main._refuse_insecure_live_deployment()` fails startup with a clear `RuntimeError` if `APP_MODE=LIVE` and `SECRET_KEY` is still the default — verified by actually booting the server both ways | Done, tested (§12.6) |
 | Brute-forcing `/api/auth/login` | `core/rate_limit.py`, per-IP and per-username, wired into `routers/auth.py`. In-process only — a documented limitation once this runs as multiple instances, not a fix that scales past one | Done, tested (§12.6) |
 | A leaked JWT being usable until natural expiry (8h default) | `models/user.RevokedToken` + `POST /api/auth/logout`; `get_current_user` checks revocation on every request | Done, tested (§12.6) |
-| SQL injection | SQLAlchemy's query builder is used everywhere — audited by grepping all of `backend/` for raw `execute()`/`text()`/f-string-built queries; zero hits | Audited, clean (§12.6) |
+| SQL injection | SQLAlchemy's query builder is used everywhere — audited by grepping all of `server/` for raw `execute()`/`text()`/f-string-built queries; zero hits | Audited, clean (§12.6) |
 | A malicious CSV/JSON camera-import payload / stored XSS via free-text fields | `SentinelCameraSource.normalize()` validates every field; `core/sanitize.py`'s `strip_html_tags()` strips markup from every free-text field at the input boundary (camera name/location, watchlist description, investigation title, evidence description, facial-recognition authorization reason) | Done, tested against real payloads (§12.6) |
 | Mock government-lookup responses being mistaken for real data | Every response carries `"mock": true` plus an explanatory message | Done |
 
@@ -259,7 +259,7 @@ All five items that were open in this table as of the previous pass are now clos
 [x] **Converted to real pytest** (2026-09-12) — was plain `assert`-and-`print` scripts requiring a manually-started `uvicorn` process; now uses FastAPI's `TestClient` (in-process, no live server needed) against an isolated SQLite file (`tests/conftest.py`, never the dev `DATABASE_URL`). Run with:
 
 ```
-cd backend
+cd server
 .venv\Scripts\python -m pytest -v
 ```
 
@@ -283,7 +283,7 @@ Statewide target is ~80,000 cameras. The pilot does not need to run at that scal
 - **Central / regional / edge compute split**: today's single AI orchestrator is the "central" tier; the adapter-factory pattern is already positioned to run per-region without redesign (multiple adapter-factory instances, one registry).
 - **Edge-side inference** (see prd.md §13.2) is the concrete lever for bandwidth at scale — detect near the camera, ship events/metadata centrally instead of full video, rather than assuming infinite backhaul bandwidth for 80,000 streams.
 - Storage tiers, GPU/accelerator sizing, and phased-rollout-by-district are HLD content (prd.md §14), not code — captured here only as the constraint the adapter/orchestrator split must remain compatible with.
-- [ ] Event bus choice for Phase 2+ scale-out: **Redis Streams vs. Kafka — not yet decided.** `backend/agents/` is reserved for this; do not build against either until decided (see prd.md §15 decision log).
+- [ ] Event bus choice for Phase 2+ scale-out: **Redis Streams vs. Kafka — not yet decided.** `server/agents/` is reserved for this; do not build against either until decided (see prd.md §15 decision log).
 
 ## 10. Deferred / explicitly out of scope for the pilot
 
@@ -298,7 +298,7 @@ Statewide target is ~80,000 cameras. The pilot does not need to run at that scal
 ## 11. Local backend setup
 
 ```
-cd backend
+cd server
 python -m venv .venv && .venv\Scripts\activate      # or source .venv/bin/activate on macOS/Linux
 pip install -r requirements.txt                       # pinned, ported from contrib/aneesh/backend
 cp ../.env.example ../.env                             # DATABASE_URL, HLS_OUTPUT_DIR
@@ -311,7 +311,7 @@ On first startup, a bootstrap `ADMIN` account is created automatically (username
 
 ## 12. Backend feature checklist
 
-Full status as of the `contrib/aneesh/` port, 2026-09-12. **Done** = ported and present in `backend/` (verify against §12.1 before trusting further). **Fix needed** = real code exists but has a known correctness gap. **Not built** = still an empty stub, no shortcuts taken.
+Full status as of the `contrib/aneesh/` port, 2026-09-12. **Done** = ported and present in `server/` (verify against §12.1 before trusting further). **Fix needed** = real code exists but has a known correctness gap. **Not built** = still an empty stub, no shortcuts taken.
 
 ### 12.1 Verification (done 2026-09-12 — a port is unverified until it runs)
 
@@ -339,7 +339,7 @@ Full status as of the `contrib/aneesh/` port, 2026-09-12. **Done** = ported and 
 - [x] Frame timestamps now prefer the stream's own reported position (`CAP_PROP_POS_MSEC`, anchored to connect-time wall clock) over pure `datetime.now()` per read — **caveat, still honest**: unverified against a real feed, since none exists to test against yet; live RTSP backends commonly report 0/unsupported for this property, in which case it silently falls back to local time exactly as before. See `adapters/rtsp.py`'s `_resolve_timestamp()` docstring.
 - [x] `intelligence/alert_engine.py` — real DB-backed watchlist matching. Built `models/watchlist.py` (`WatchlistEntry` + `WatchlistMatch`, match count derived from match rows rather than a stored counter), `schemas/watchlist.py`, `services/watchlist_service.py`, `intelligence/watchlist_matcher.py` (exact match only — see that file's docstring for why fuzzy matching isn't implemented yet), and `routers/watchlists.py` (list + create, wired into `main.py`). Verified end-to-end in `tests/test_watchlists.py`: a matching plate produces a real watchlist alert with the entry's actual risk level/category, a non-matching plate produces a plain event, and `match_count` genuinely increments. Caught and fixed a real bug in the process — `_create_watchlist_alert` was reading ORM attributes after the session that fetched them had committed and closed (`DetachedInstanceError`); fixed by snapshotting the needed fields before the commit.
 - [x] `routers/streams.py`'s AI pipeline now reads `Camera.ai_profile` per camera (new column, defaults to `TRAFFIC`, backs frontend.md §3.8's per-camera profile selector) instead of hardcoding `TRAFFIC` for every camera. Falls back to `TRAFFIC` with a logged warning if a camera somehow has an invalid value.
-- [x] Pydantic v1-style patterns audited across all of `backend/` (`@validator`, `.dict()`, `.json()` on a model, `orm_mode`, `class Config:`, `@root_validator`) — nothing found beyond the one already-fixed `schemas/camera.py` validator. No further action needed unless more of `contrib/aneesh/` gets ported later.
+- [x] Pydantic v1-style patterns audited across all of `server/` (`@validator`, `.dict()`, `.json()` on a model, `orm_mode`, `class Config:`, `@root_validator`) — nothing found beyond the one already-fixed `schemas/camera.py` validator. No further action needed unless more of `contrib/aneesh/` gets ported later.
 
 ### 12.4 Built (2026-09-12, second pass — verified against pytest + manual endpoint checks)
 
@@ -383,7 +383,7 @@ Five of the eight items from this section's previous pass are now closed, real a
 - [x] **Rate limiting on `/api/auth/login`** — `core/rate_limit.py`'s `InMemoryRateLimiter`, two instances (per-IP and per-username, either tripping blocks the attempt), wired into `routers/auth.py`. Explicitly in-process, not Redis-backed — documented limitation, not an oversight, since Redis is already deferred to Phase 2+ (§9). A successful login resets both limiters for that identity. Tested end-to-end (`tests/test_security_hardening.py`) *and* as a unit test of the limiter class itself, specifically so the HTTP-level test can't leak rate-limit state into other tests sharing the same in-process limiter — caught this for real: an earlier version of the logout test below did leak shared session state and broke five other tests, fixed by using a dedicated token instead of the shared one.
 - [x] **JWT revocation/blocklist** — `models/user.RevokedToken` (keyed by the token's `jti` claim, now issued on every token), `core/security.revoke_token()`/`is_token_revoked()`, `POST /api/auth/logout`. `get_current_user` checks revocation on every request. Tested that a revoked token is rejected immediately, not just eventually expires.
 - [x] **Startup check for a default `SECRET_KEY` in `LIVE`** — `main._refuse_insecure_live_deployment()`, called first thing in the lifespan. **Verified for real, not just unit-tested**: booted the actual server with `APP_MODE=LIVE` and the default key and watched it refuse to start with a clear `RuntimeError`; booted it again with a real key and confirmed it comes up fine. `DEMO` mode (this backend's actual current deployment mode) is unaffected either way.
-- [x] **SQL-injection audit** — actually audited, not just asserted safe: grepped all of `backend/` for raw `execute()`/`text()`/f-string-built queries/`.filter(f"...")`. Zero hits — every query goes through SQLAlchemy's parameterized query builder. Downgraded from "believed safe" to "audited, clean."
+- [x] **SQL-injection audit** — actually audited, not just asserted safe: grepped all of `server/` for raw `execute()`/`text()`/f-string-built queries/`.filter(f"...")`. Zero hits — every query goes through SQLAlchemy's parameterized query builder. Downgraded from "believed safe" to "audited, clean."
 - [x] **Free-text XSS sanitization** — `core/sanitize.py`'s `strip_html_tags()` (strips markup at the input boundary rather than HTML-escaping it — see that module's docstring for why storing escaped entities in a JSON API would be actively wrong), applied via Pydantic `field_validator`s on `Camera` (name/location/department/district/vms_vendor), `WatchlistEntry` (identifier/description/source/added_by), `Investigation`/`Evidence` (title/entity/assigned_officer/description), and the facial-recognition authorization `reason`. Tested against real `<script>`/`<img onerror>`/`<svg onload>` payloads through the actual create endpoints.
 
 ### 12.7 Remaining known gaps — tooling built, the actual blockers unchanged (2026-09-13, 63 passing pytest tests)

@@ -2,17 +2,17 @@
 
 Governs everything from "a normalized video frame arrives" to "a scored alert or investigation lead exists": detector contracts, the AI orchestrator, intelligence correlation, and the real-data/dataset strategy. Backend plumbing that gets a frame to this point (adapters, registry, APIs) lives in [backend.md](backend.md); how results surface on screen lives in [frontend.md](frontend.md).
 
-Stack: Python detector interfaces behind a swappable mock/real boundary (`backend/ai/interfaces.py`), profile-driven orchestration (TRAFFIC/SECURITY/RTO).
+Stack: Python detector interfaces behind a swappable mock/real boundary (`server/ai/interfaces.py`), profile-driven orchestration (TRAFFIC/SECURITY/RTO).
 
 ---
 
-## 1. AI orchestrator (`backend/ai/orchestrator.py`)
+## 1. AI orchestrator (`server/ai/orchestrator.py`)
 
-A profile-driven orchestrator (profiles: **TRAFFIC**, **SECURITY**, **RTO**) sits behind swappable detector interfaces (`backend/ai/interfaces.py`), so every detector below can run as a mock provider (`backend/ai/mock_providers.py`) today and be swapped for a real fine-tuned model later without changing the orchestrator or any downstream consumer (frontend.md §3.8 "AI & datasets" tab is where that swap is selected per camera).
+A profile-driven orchestrator (profiles: **TRAFFIC**, **SECURITY**, **RTO**) sits behind swappable detector interfaces (`server/ai/interfaces.py`), so every detector below can run as a mock provider (`server/ai/mock_providers.py`) today and be swapped for a real fine-tuned model later without changing the orchestrator or any downstream consumer (frontend.md §3.8 "AI & datasets" tab is where that swap is selected per camera).
 
-- [ ] **Mock-provider interface boundary** — how a real model plugs in at `backend/ai/interfaces.py` without changing callers. Not yet documented in code; this is the seed of that contract.
+- [ ] **Mock-provider interface boundary** — how a real model plugs in at `server/ai/interfaces.py` without changing callers. Not yet documented in code; this is the seed of that contract.
 - [ ] Profiles, thresholds, and the `AIAnalysisResult` schema (Pipeline 3 below) — not yet defined.
-- [ ] Quality gating (`backend/ai/quality.py`) — reject low-quality frames (blur, occlusion, extreme low-light) before they reach a detector, rather than letting detectors silently guess on unusable input.
+- [ ] Quality gating (`server/ai/quality.py`) — reject low-quality frames (blur, occlusion, extreme low-light) before they reach a detector, rather than letting detectors silently guess on unusable input.
 
 ## 2. Detector contracts
 

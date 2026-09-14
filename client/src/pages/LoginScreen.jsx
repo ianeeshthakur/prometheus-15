@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import api from '../api/client';
 import './LoginScreen.css';
 
 const languageCopy = {
@@ -49,24 +50,40 @@ function LoginScreen() {
   const [authState, setAuthState] = useState('idle');
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [authedUser, setAuthedUser] = useState(null);
   const copy = languageCopy[language];
 
-  useEffect(() => {
-    if (authState !== 'verifying') return undefined;
-    const timer = window.setTimeout(() => {
-      if (userId.trim() && password.trim()) {
-        setAuthState('success');
-      } else {
-        setAuthState('failure');
-      }
-    }, 1900);
-    return () => window.clearTimeout(timer);
-  }, [authState, password, userId]);
-
-  const handleLogin = (event) => {
+  // Real login against POST /api/auth/login (backend/routers/auth.py) -- this used to
+  // be a setTimeout that succeeded for any non-empty username/password, which is a
+  // real security bug (fake auth), not just an incomplete feature. Falls back to
+  // mock-mode entry only when the backend is genuinely unreachable, matching the rest
+  // of the app's honest DEMO/LIVE distinction (Topbar's engine-mode pill).
+  const handleLogin = async (event) => {
     event.preventDefault();
+    if (!userId.trim() || !password.trim()) return;
     setShowOfficerCard(true);
     setAuthState('verifying');
+    setLoginError('');
+    try {
+      await api.login(userId.trim(), password);
+      const me = await api.getCurrentUser();
+      setAuthedUser(me);
+      setAuthState('success');
+    } catch (err) {
+      const isNetworkFailure = err instanceof TypeError; // fetch() throws TypeError when the backend is unreachable
+      if (isNetworkFailure) {
+        // No backend to authenticate against -- allow a clearly-labelled mock-mode
+        // entry rather than locking the whole UI out during offline/demo use.
+        api.setMockMode(true);
+        api.startMockSession();
+        setAuthedUser(null);
+        setAuthState('success');
+        return;
+      }
+      setLoginError(err.message || 'Invalid credentials');
+      setAuthState('failure');
+    }
   };
 
   const handleSuccessfulEntry = () => {
@@ -150,9 +167,9 @@ function LoginScreen() {
             </div>
             <div className="auth-copy">
               <span className="officer-kicker">{authState === 'verifying' ? 'VERIFYING IDENTITY' : authState === 'failure' ? 'ACCESS DENIED' : 'IDENTITY VERIFIED'}</span>
-              <h2>{authState === 'verifying' ? 'Checking credentials...' : authState === 'failure' ? 'Credentials required' : copy.officerName}</h2>
-              <p>{authState === 'verifying' ? 'Synchronising with Gujarat Command Network' : authState === 'failure' ? 'Enter your user ID and password to continue.' : copy.officerRole}</p>
-              {authState === 'success' && <><div className="officer-location"><span>⌖</span>{copy.officerLocation}</div><div className="officer-stats"><span><strong>06:42</strong> last sign-in</span><span><strong>Tier 04</strong> clearance</span></div><button type="button" className="officer-enter" onClick={handleSuccessfulEntry}>Enter command centre <span>→</span></button></>}
+              <h2>{authState === 'verifying' ? 'Checking credentials...' : authState === 'failure' ? 'Sign-in failed' : (authedUser?.full_name || authedUser?.username || copy.officerName)}</h2>
+              <p>{authState === 'verifying' ? 'Synchronising with Gujarat Command Network' : authState === 'failure' ? loginError : (authedUser ? `${authedUser.role}${authedUser.department_scope ? ' · ' + authedUser.department_scope : ''}` : copy.officerRole)}</p>
+              {authState === 'success' && <><div className="officer-location"><span>⌖</span>{copy.officerLocation}</div><div className="officer-stats"><span><strong>{api.getMode() === 'LIVE_BACKEND' ? 'LIVE' : 'DEMO'}</strong> session</span><span><strong>{authedUser?.role || 'Guest'}</strong> clearance</span></div><button type="button" className="officer-enter" onClick={handleSuccessfulEntry}>Enter command centre <span>→</span></button></>}
               {authState === 'failure' && <button type="button" className="officer-retry" onClick={() => setShowOfficerCard(false)}>Try again</button>}
             </div>
           </div>

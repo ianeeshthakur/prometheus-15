@@ -2,6 +2,7 @@ node_modules/
 .next/
 out/
 build/
+dist/
 next-env.d.ts
 *.tsbuildinfo
 .env
@@ -9,9 +10,9 @@ next-env.d.ts
 *.db
 __pycache__/
 *.pyc
+.pytest_cache/
 venv/
 .venv/
-backend/venv/
 *.log
 .DS_Store
 

@@ -1,17 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import './Topbar.css';
 
 function Topbar() {
+  const navigate = useNavigate();
   const [backendMode, setBackendMode] = useState('Checking...');
   const [unreadAlerts, setUnreadAlerts] = useState(3);
+  const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
     api.checkBackendAvailability().then((isLive) => {
       setBackendMode(isLive ? 'LIVE BACKEND' : 'MOCK ENGINE');
+      if (isLive) api.getCurrentUser().then(setCurrentUser);
     });
   }, []);
+
+  const handleLogout = async () => {
+    await api.logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <header className="topbar">
@@ -63,13 +71,26 @@ function Topbar() {
           {unreadAlerts > 0 && <span className="alert-count-bubble">{unreadAlerts}</span>}
         </Link>
 
-        {/* User / Officer Profile Badge */}
+        {/* User / Officer Profile Badge -- real identity when a real session exists
+            (backend/routers/auth.py's /me), a generic DEMO placeholder otherwise --
+            never a hardcoded fake name presented as if it were a real signed-in user. */}
         <div className="officer-badge">
-          <div className="officer-avatar">RS</div>
-          <div className="officer-info">
-            <span className="officer-name">PSI Rakesh Solanki</span>
-            <span className="officer-unit">Gandhinagar Command · SRT-0042</span>
+          <div className="officer-avatar">
+            {currentUser ? (currentUser.full_name || currentUser.username).slice(0, 2).toUpperCase() : 'DM'}
           </div>
+          <div className="officer-info">
+            <span className="officer-name">{currentUser ? (currentUser.full_name || currentUser.username) : 'Demo session'}</span>
+            <span className="officer-unit">
+              {currentUser ? `${currentUser.role}${currentUser.department_scope ? ' · ' + currentUser.department_scope : ''}` : 'No backend connected'}
+            </span>
+          </div>
+          <button type="button" className="officer-logout" onClick={handleLogout} title="Log out">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
         </div>
       </div>
     </header>

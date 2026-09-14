@@ -1,0 +1,148 @@
+.watchlists-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 4px;
+}
+
+.watchlists-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.section-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.watchlists-header h1 {
+  margin: 4px 0 4px;
+  font-size: 1.4rem;
+  color: var(--text-primary);
+}
+
+.watchlists-header p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  max-width: 640px;
+}
+
+.watchlists-add-btn {
+  background-color: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.watchlists-add-btn:hover {
+  filter: brightness(0.95);
+}
+
+.watchlists-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.watchlist-form {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  background-color: var(--bg-primary);
+}
+
+.watchlist-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.watchlist-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.watchlist-form input,
+.watchlist-form select {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+}
+
+.watchlist-form-description {
+  grid-column: 1 / -1;
+}
+
+.watchlist-form-error {
+  color: #c62828;
+  font-size: 0.8rem;
+  margin: 10px 0 0;
+}
+
+.watchlist-form-submit {
+  margin-top: 14px;
+  background-color: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 18px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.watchlist-form-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.watchlist-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 10px;
+}
+
+.watchlist-tabs button {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.watchlist-tabs button.active {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.watchlist-identifier {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-weight: 600;
+}
+
+.watchlist-match-count {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
