@@ -89,7 +89,7 @@ This loop runs independently per category — video footage arriving doesn't blo
 
 ## 7. Dataset/model sourcing plan (real AI, pre-collection)
 
-Where the vehicle/plate/person/OCR/re-identification models themselves come from before any real dataset in §6 has landed — recovered from the prior `prometheus-1` design work (`contrib/aneesh/docs/prd/G-VISTA-Blueprint.md` §11), which researched this before the fresh-start rebuild. The reasoning in that source doc: the pipeline is evaluated on real, unfamiliar Indian-road footage, not a staged demo clip, so pretrained-source fit matters more than architecture choice.
+Where the vehicle/plate/person/OCR/re-identification models themselves come from before any real dataset in §6 has landed — recovered from the prior `prometheus-1` design work (`G-VISTA-Blueprint.md` §11, archived externally 2026-09-14 — see prd.md §15), which researched this before the fresh-start rebuild. The reasoning in that source doc: the pipeline is evaluated on real, unfamiliar Indian-road footage, not a staged demo clip, so pretrained-source fit matters more than architecture choice.
 
 | Task | Recommended dataset(s) | Why it fits |
 |---|---|---|

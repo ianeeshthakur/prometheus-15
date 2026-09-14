@@ -10,10 +10,9 @@ server/     FastAPI backend -- docs/backend.md
 shared/     Reserved for real client/server-shared code (currently empty, see shared/README.md)
 docs/       prd.md, backend.md, frontend.md, ai_pipelines.md
 datasets/   Real-data intake structure -- ai_pipelines.md §6
-contrib/    Archived/reference code not in production use (see below)
 ```
 
-`contrib/` holds code that was superseded, not deleted: `contrib/aneesh/backend/` (a teammate's separately-evolved backend, considered and not chosen as production -- prd.md §15) and `contrib/nextjs-frontend-archive/` (an earlier Next.js frontend, superseded by `client/` -- frontend.md §0/§6 name specific pieces worth porting back).
+No `contrib/` directory in the repo anymore: it held superseded-not-chosen code (a teammate's separately-evolved backend, considered and not chosen as production, and the earlier Next.js frontend `client/` superseded) and was removed on 2026-09-14 once its owner had it archived externally, rather than keeping a second copy in-tree (prd.md §15 decision log; frontend.md §6 names what was ported out of the Next.js side of it before it left).
 
 ## Quick start
 
