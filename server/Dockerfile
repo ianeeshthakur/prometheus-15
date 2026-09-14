@@ -4,7 +4,7 @@ FROM python:3.13-slim
 
 # ffmpeg is a real runtime dependency (video/ffmpeg_runner.py's RTSP->HLS transcoding,
 # routers/health.py's ffmpeg_available check) -- not a pip package, must come from apt.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libglib2.0-0 libsm6 libxext6 libxrender-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
