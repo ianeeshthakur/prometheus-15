@@ -367,6 +367,28 @@ class VistaApiClient {
     throw new Error(`Failed to stop stream (${res.status})`);
   }
 
+  /** POST /api/streams/client-errors -- real client-side error log (the "client-side
+   * error log" half of docs/backend.md §2's structured error-reporting checklist
+   * item; the backend-adapter half is server/services/error_log_service.py, wired
+   * into the real RTSP/HLS/FFmpeg failure points). Called from HlsPlayer.jsx's real
+   * playback error handler via LiveCameras.jsx. Best-effort by design -- a failure to
+   * report an error should never itself surface as a second error to the user. */
+  async reportClientError({ cameraUid, clientName, clientVersion, errorType, errorMessage }) {
+    const res = await fetch(`${this.baseUrl}/api/streams/client-errors`, {
+      method: 'POST',
+      headers: this._authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        camera_uid: cameraUid,
+        client_name: clientName,
+        client_version: String(clientVersion),
+        error_type: errorType,
+        error_message: errorMessage,
+      }),
+    });
+    if (!res.ok) throw new Error(`Failed to report client error (${res.status})`);
+    return await res.json();
+  }
+
   /** GET /api/streams/{camera_id}/status -- now real auth (get_current_user), like
    * every other camera/stream route; was genuinely unauthenticated until the same
    * re-check that fixed the events/stream endpoint above found it too. */

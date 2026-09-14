@@ -7,7 +7,11 @@ from fastapi import APIRouter, Depends
 from db.database import get_db
 from sqlalchemy.orm import Session
 import services.admin_settings_service as admin_settings_service
+from typing import Optional
+
 from schemas.admin_settings import FacialRecognitionAuthorizeRequest, FacialRecognitionStatusResponse
+from schemas.user import AuditLogResponse
+from schemas.event import AdapterErrorLogResponse
 from core.security import require_admin, log_action
 from models.user import User
 from integration import mock_gov_adapters
@@ -55,7 +59,32 @@ async def get_audit_log(limit: int = 100, db: Session = Depends(get_db), admin: 
     from models.user import AuditLogEntry
 
     entries = db.query(AuditLogEntry).order_by(AuditLogEntry.created_at.desc()).limit(limit).all()
-    return {"entries": entries}
+    # Explicit response_model validation (not just `return {"entries": entries}`) --
+    # found missing here while building the adapter-errors endpoint below: without it,
+    # FastAPI's default encoder serializes the raw ORM datetime with no timezone
+    # suffix, reproducing the exact "timestamps silently off by the server's UTC
+    # offset" bug already fixed everywhere else via schemas/common.py's UtcDatetime
+    # (commit ced635d). AuditLogResponse existed but was never actually wired in.
+    return {"entries": [AuditLogResponse.model_validate(e) for e in entries]}
+
+
+@router.get("/adapter-errors")
+async def get_adapter_errors(
+    camera_uid: Optional[str] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """docs/backend.md §2's structured error-reporting checklist item, closed
+    2026-09-14 -- previously just plain logger.error() calls in
+    adapters/rtsp.py/hls.py and video/ffmpeg_runner.py, now real, queryable rows
+    (services/error_log_service.py). Admin-only, same reasoning as audit-log: this can
+    include real (redacted) stream URLs and real camera identifiers, not something an
+    unauthenticated or non-admin caller should see."""
+    from services.error_log_service import list_adapter_errors
+
+    entries = list_adapter_errors(db, camera_uid=camera_uid, limit=limit)
+    return {"entries": [AdapterErrorLogResponse.model_validate(e) for e in entries]}
 
 
 # -- Mock government database lookups (docs/backend.md §7) --------------------------

@@ -19,6 +19,7 @@ from typing import Optional
 
 from .base import CameraAdapter
 from .models import NormalizedFrame
+from services.error_log_service import log_adapter_error_now, opencv_version
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,14 @@ class RTSPAdapter(CameraAdapter):
             if not self.cap.isOpened():
                 logger.error(f"[{self.camera_uid}] RTSPAdapter failed to open stream.")
                 self._status = "OFFLINE"
+                log_adapter_error_now(
+                    error_type="CONNECTION_FAILED",
+                    camera_uid=self.camera_uid,
+                    url=self._rtsp_url,
+                    client_name="opencv-rtsp",
+                    client_version=opencv_version(),
+                    error_message="cv2.VideoCapture.isOpened() returned False",
+                )
                 return False
 
             self._status = "ACTIVE"
@@ -70,6 +79,14 @@ class RTSPAdapter(CameraAdapter):
         except Exception as e:
             logger.error(f"[{self.camera_uid}] Exception during RTSP connect: {e}")
             self._status = "ERROR"
+            log_adapter_error_now(
+                error_type="CONNECTION_FAILED",
+                camera_uid=self.camera_uid,
+                url=self._rtsp_url,
+                client_name="opencv-rtsp",
+                client_version=opencv_version(),
+                error_message=str(e),
+            )
             return False
 
     def _attempt_reconnect(self) -> bool:
@@ -79,6 +96,14 @@ class RTSPAdapter(CameraAdapter):
         if self._reconnect_attempts >= MAX_RECONNECT_ATTEMPTS:
             logger.error(f"[{self.camera_uid}] Max reconnect attempts ({MAX_RECONNECT_ATTEMPTS}) reached, marking OFFLINE.")
             self._status = "OFFLINE"
+            log_adapter_error_now(
+                error_type="RECONNECT_EXHAUSTED",
+                camera_uid=self.camera_uid,
+                url=self._rtsp_url,
+                client_name="opencv-rtsp",
+                client_version=opencv_version(),
+                error_message=f"Gave up after {MAX_RECONNECT_ATTEMPTS} reconnect attempts",
+            )
             self._reconnect_attempts = 0
             return False
 

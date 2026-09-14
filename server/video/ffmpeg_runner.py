@@ -14,6 +14,8 @@ import subprocess
 from datetime import datetime
 from typing import Optional, Callable
 
+from services.error_log_service import log_adapter_error_now, ffmpeg_version
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,6 +66,14 @@ class FFmpegRunner:
             if probe_proc.returncode != 0:
                 err_msg = stderr.decode().strip()
                 logger.error(f"[{self.camera_id}] Connection test failed. Reason: {err_msg}")
+                log_adapter_error_now(
+                    error_type="PROBE_FAILED",
+                    camera_uid=self.camera_id,
+                    url=self.rtsp_url,
+                    client_name="ffprobe",
+                    client_version=ffmpeg_version(),
+                    error_message=err_msg,
+                )
                 return False
 
             probe_info = stdout.decode().strip().split("\n")
@@ -80,6 +90,14 @@ class FFmpegRunner:
                 logger.info(f"[{self.camera_id}] CONNECTED. But could not fully parse probe info.")
         except Exception as e:
             logger.error(f"[{self.camera_id}] ffprobe execution failed: {e}")
+            log_adapter_error_now(
+                error_type="PROBE_FAILED",
+                camera_uid=self.camera_id,
+                url=self.rtsp_url,
+                client_name="ffprobe",
+                client_version=ffmpeg_version(),
+                error_message=str(e),
+            )
             return False
 
         cmd = [
@@ -112,6 +130,14 @@ class FFmpegRunner:
             return True
         except Exception as e:
             logger.error(f"[{self.camera_id}] Failed to start FFmpeg: {e}")
+            log_adapter_error_now(
+                error_type="CONNECTION_FAILED",
+                camera_uid=self.camera_id,
+                url=self.rtsp_url,
+                client_name="ffmpeg",
+                client_version=ffmpeg_version(),
+                error_message=str(e),
+            )
             self.is_running = False
             return False
 
@@ -151,6 +177,14 @@ class FFmpegRunner:
 
         if was_running:
             logger.warning(f"[{self.camera_id}] FFmpeg exited unexpectedly with code {exit_code}")
+            log_adapter_error_now(
+                error_type="UNEXPECTED_EXIT",
+                camera_uid=self.camera_id,
+                url=self.rtsp_url,
+                client_name="ffmpeg",
+                client_version=ffmpeg_version(),
+                error_message=f"Process exited with code {exit_code}",
+            )
             if self._on_stop_callback:
                 asyncio.create_task(self._on_stop_callback(self.camera_id, exit_code))
 

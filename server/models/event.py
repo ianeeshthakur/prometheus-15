@@ -29,3 +29,36 @@ class CameraEvent(Base):
     district = Column(String, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class AdapterErrorLog(Base):
+    """Structured adapter/stream error log -- closes docs/backend.md §2's checklist
+    item ("error reporting capturing camera id, exact URL, client + version, UTC
+    timestamp, and client-side error log"), which was previously just plain Python
+    `logger.error()` calls with nothing queryable or persisted.
+
+    `url_redacted` deliberately never stores real credentials -- same boundary
+    CameraResponse already enforces for the registry (its own docstring: no raw
+    camera IP/RTSP URL ever reaches a frontend-facing response). An engineer with DB
+    access still gets host/path for debugging; a leaked row (DB dump, admin-log view)
+    can't leak a working camera password. See services/error_log_service.py's
+    redact_stream_url() for the actual redaction.
+
+    `source` distinguishes a real backend adapter failure (RTSP/HLS/FFmpeg connect or
+    read failure) from a real frontend-reported failure (e.g. HlsPlayer.jsx's video
+    element firing a real playback error) -- both write to this same table via
+    services/error_log_service.py, so an engineer sees the whole picture in one place
+    instead of two disconnected logs."""
+
+    __tablename__ = "adapter_error_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    camera_uid = Column(String, ForeignKey("cameras.camera_uid"), nullable=True, index=True)
+    source = Column(String, nullable=False)  # BACKEND_ADAPTER | CLIENT
+    url_redacted = Column(String, nullable=True)  # e.g. rtsp://[REDACTED]@host:port/path -- never raw credentials
+    client_name = Column(String, nullable=True)  # e.g. opencv-rtsp, opencv-hls, ffmpeg, browser-hls.js
+    client_version = Column(String, nullable=True)  # real, detected version -- "unknown" if it genuinely can't be determined, never guessed
+    error_type = Column(String, nullable=False)  # e.g. CONNECTION_FAILED, READ_FAILED, PROBE_FAILED, PLAYBACK_ERROR
+    error_message = Column(String, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)  # UTC timestamp, per the checklist item

@@ -18,8 +18,11 @@ import asyncio
 import json
 import logging
 
-from db.database import SessionLocal
+from sqlalchemy.orm import Session
+
+from db.database import SessionLocal, get_db
 from services import camera_service
+from services.error_log_service import log_adapter_error
 from video.stream_manager import stream_manager
 from video.frame_sampler import FrameSampler
 from adapters.factory import AdapterFactory
@@ -29,6 +32,7 @@ from intelligence.events import NormalizedEvent
 from intelligence.alert_engine import alert_engine
 from core.security import get_current_user, get_current_user_header_or_query, log_action
 from models.user import User
+from schemas.event import ClientErrorReport
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -78,6 +82,32 @@ async def get_status(camera_id: str, user: User = Depends(get_current_user)):
     if not status:
         return {"camera_id": camera_id, "status": "OFFLINE"}
     return status
+
+
+@router.post("/client-errors")
+async def report_client_error(
+    payload: ClientErrorReport,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The "client-side error log" half of docs/backend.md §2's structured
+    error-reporting checklist item -- a real endpoint the frontend can call when a
+    playback/stream error happens in the browser, not just the backend-adapter half
+    (see services/error_log_service.py's log_adapter_error, wired into
+    adapters/rtsp.py/hls.py and video/ffmpeg_runner.py). Auth-required: this writes a
+    DB row and could otherwise be used to spam the table from an unauthenticated
+    caller. Real frontend caller: client/src/components/HlsPlayer.jsx's video element
+    error handler."""
+    entry = log_adapter_error(
+        db,
+        error_type=payload.error_type,
+        source="CLIENT",
+        camera_uid=payload.camera_uid,
+        client_name=payload.client_name,
+        client_version=payload.client_version,
+        error_message=payload.error_message,
+    )
+    return {"id": entry.id, "status": "logged"}
 
 
 async def _run_ai_pipeline(camera_id: str):

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import Hls from 'hls.js';
 import StatusBadge from '../components/StatusBadge';
 import HlsPlayer from '../components/HlsPlayer';
 import api from '../api/client';
@@ -50,7 +51,23 @@ function CameraCard({ cam }) {
   return (
     <div className="live-camera-card">
       {streamState === 'playing' && hlsUrl ? (
-        <HlsPlayer src={hlsUrl} onError={(msg) => { setStreamError(msg); setStreamState('error'); }} />
+        <HlsPlayer
+          src={hlsUrl}
+          onError={(msg) => {
+            setStreamError(msg);
+            setStreamState('error');
+            // Real client-side error report (docs/backend.md §2's structured
+            // error-reporting checklist item) -- best-effort, never blocks the UI
+            // on its own failure.
+            api.reportClientError({
+              cameraUid: cam.camera_uid,
+              clientName: 'browser-hls.js',
+              clientVersion: Hls.version,
+              errorType: 'PLAYBACK_ERROR',
+              errorMessage: msg,
+            }).catch(() => {});
+          }}
+        />
       ) : (
         <div className="live-camera-thumb">
           {streamState === 'starting' && <span>Starting stream…</span>}
