@@ -11,6 +11,11 @@ DETECTION_CONFIDENCE_THRESHOLD = 0.50
 AI_TARGET_FPS = 5
 AI_FRAME_SKIP = 3  # e.g. process 1 out of every 4 frames
 
+# Provider Configuration
+PROVIDER_MODE = "REAL"  # "REAL" or "MOCK"
+DEVICE = "cpu"  # "cpu", "cuda", "mps"
+PLATE_MODEL_PATH = "ai/models/plate/best.pt"
+
 AI_PROFILES_CONFIG = {
     AIProfile.TRAFFIC: {
         "vehicle_detection": True,

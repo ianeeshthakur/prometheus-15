@@ -24,6 +24,13 @@ class AnomalyDetector(ABC):
         pass
 
 
+class VehicleTracker(ABC):
+    @abstractmethod
+    def track(self, detections: List[DetectionResult], frame: np.ndarray) -> List[DetectionResult]:
+        """Assigns consistent tracking IDs (detection_id) across frames."""
+        pass
+
+
 class PlateDetector(ABC):
     @abstractmethod
     def detect(self, frame_crop: np.ndarray, vehicle_id: str, camera_uid: str, timestamp, frame_sequence: int) -> Optional[dict]:

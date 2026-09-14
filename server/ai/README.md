@@ -8,8 +8,35 @@ Video acquisition (`NormalizedFrame`, from `adapters/`) is decoupled from AI inf
 - `interfaces.py` — abstract base classes for AI providers (`VehicleDetector`, `PlateDetector`, etc).
 - `orchestrator.py` — `AIOrchestrator` applies `AIProfile` rules (TRAFFIC vs SECURITY vs RTO) to decide which detectors run, handles the vehicle→plate→OCR pipeline, and evaluates confidence.
 
-## Mock mode
-Currently uses `MockVehicleDetector`, `MockPersonDetector`, etc. — static, synthesized detections so the orchestrator logic (profile gating, confidence math, quality gating) can be validated before real models exist.
+## Pipeline 3 Components Status
+
+- **YOLO26n License Plate Detector**: REAL (Configured). Performs license plate detection (`Class 0: license_plate`).
+- **PaddleOCR**: NOT_CONFIGURED. Handles character recognition.
+- **Vehicle Detector**: NOT_CONFIGURED (Stub).
+- **Tracker**: STUB (Naive IoU implementation used as a fallback since ByteTrack is NOT_CONFIGURED).
+- **Person Detector**: MOCK / NOT_CONFIGURED.
+- **Anomaly Detector**: MOCK / NOT_CONFIGURED.
+- **Frame Quality Gate**: REAL. Uses Laplacian variance for blur and mean intensity for brightness.
+- **Confidence Filtering**: REAL. Combines detection confidence, OCR confidence, and frame quality to compute a final score.
+
+## Real Model Metrics
+
+**YOLO26n License Plate Detector**
+- **Model**: YOLO26n
+- **Task**: License Plate Detection (YOLO26n = license plate detection, PaddleOCR = character recognition, ByteTrack = object tracking)
+- **Class**: `0 = license_plate`
+- **Input size**: 640
+- **Precision**: 99.53%
+- **Recall**: 97.60%
+- **mAP50**: 99.40%
+- **mAP50-95**: 87.59%
+
+> **These metrics are test-set metrics supplied by the model owner and do not guarantee field performance.**
+
+## Mock Mode vs Real Mode
+The orchestrator can switch between REAL and MOCK modes via `PROVIDER_MODE` in `config.py`.
+- `MOCK` mode uses static, synthesized detections for end-to-end pipeline validation.
+- `REAL` mode utilizes the actual models (e.g. YOLO26n) configured in `real_providers.py`, returning `NOT_CONFIGURED` gracefully for missing dependencies.
 
 ## Real-model integration
 1. Place model files under `backend/ai/models/` (create this directory when needed).
