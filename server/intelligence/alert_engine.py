@@ -17,7 +17,7 @@
 # NormalizedEvent carries a plate_number but no stable person identifier
 # (re-identification isn't built -- docs/ai_pipelines.md §5).
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from .events import NormalizedEvent
 import asyncio
 
@@ -102,7 +102,7 @@ class AlertEngine:
         else:
             await self._notify_subscribers({"type": "event", "data": event.model_dump()})
 
-    def _alert_to_message(self, alert, watchlist_entry_id: int | None = None) -> Dict[str, Any]:
+    def _alert_to_message(self, alert, watchlist_entry_id: Optional[int] = None) -> Dict[str, Any]:
         return {
             "type": "alert",
             "data": {

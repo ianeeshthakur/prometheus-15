@@ -53,17 +53,15 @@ INGEST_RTSP_PORT = os.environ.get("INGEST_RTSP_PORT", "8554")
 # from "backend not running". 3000 kept for anyone still running the archived app.
 CORS_ORIGINS = os.environ.get(
     "CORS_ORIGINS",
-    # 5174/5175 added after a real Playwright audit run tripped this for real: Vite
-    # auto-increments past 5173 when that port is already taken (e.g. a second `npm run
-    # dev`, or a stale process from a previous session) and silently landed on 5174 --
-    # every /api/* call from that dev server failed CORS preflight, same failure mode
-    # (indistinguishable from "backend not running") the 5173 fix above already
-    # documented. A few sequential fallback ports cover the common case without opening
-    # this up to arbitrary origins.
+    # Local dev servers (Vite auto-increments past 5173 when port is taken)
     "http://localhost:5173,http://127.0.0.1:5173,"
     "http://localhost:5174,http://127.0.0.1:5174,"
     "http://localhost:5175,http://127.0.0.1:5175,"
-    "http://localhost:3000,http://127.0.0.1:3000",
+    "http://localhost:3000,http://127.0.0.1:3000,"
+    # Production Vercel deployment
+    "https://gujarat-police-three.vercel.app,"
+    # Vercel preview deployments (any subdomain)
+    "https://*.vercel.app",
 ).split(",")
 
 # Auth (docs/backend.md §7/§12.4). SECRET_KEY MUST be overridden via env before any real
