@@ -1,8 +1,8 @@
 # Schemas for the facial-recognition authorization gate -- docs/backend.md §12.4.
 from pydantic import BaseModel, ConfigDict, field_validator
-from datetime import datetime
 
 from core.sanitize import strip_html_tags
+from schemas.common import UtcDatetime
 
 
 class FacialRecognitionAuthorizeRequest(BaseModel):
@@ -21,7 +21,7 @@ class FacialRecognitionAuthorizationResponse(BaseModel):
     enabled: bool
     authorized_by: str
     reason: str
-    created_at: datetime
+    created_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
 

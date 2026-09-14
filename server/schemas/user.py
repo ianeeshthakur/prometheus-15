@@ -2,7 +2,8 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from enum import Enum
-from datetime import datetime
+
+from schemas.common import UtcDatetime
 
 
 class UserRole(str, Enum):
@@ -25,8 +26,8 @@ class UserResponse(BaseModel):
     role: UserRole
     department_scope: Optional[str] = None
     active: bool
-    last_login: Optional[datetime] = None
-    created_at: datetime
+    last_login: Optional[UtcDatetime] = None
+    created_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -39,6 +40,6 @@ class AuditLogResponse(BaseModel):
     resource_type: Optional[str] = None
     resource_id: Optional[str] = None
     detail: Optional[str] = None
-    created_at: datetime
+    created_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)

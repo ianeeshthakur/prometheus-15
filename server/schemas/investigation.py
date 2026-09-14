@@ -3,10 +3,10 @@
 from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional, List
 from enum import Enum
-from datetime import datetime
 
 from schemas.event import CameraEventResponse
 from schemas.alert import AlertResponse
+from schemas.common import UtcDatetime
 from core.sanitize import strip_html_tags
 
 
@@ -42,8 +42,8 @@ class InvestigationResponse(BaseModel):
     status: InvestigationStatus
     priority: InvestigationPriority
     assigned_officer: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -74,7 +74,7 @@ class EvidenceResponse(BaseModel):
     camera_uid: Optional[str] = None
     confidence: Optional[float] = None
     reference_event_id: Optional[int] = None
-    added_at: datetime
+    added_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -92,7 +92,7 @@ class TraceSighting(BaseModel):
     district: str
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    timestamp: datetime
+    timestamp: UtcDatetime
     event_type: str
     confidence: float
 

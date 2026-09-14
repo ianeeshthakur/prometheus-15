@@ -2,9 +2,9 @@
 from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional
 from enum import Enum
-from datetime import datetime
 
 from core.sanitize import strip_html_tags
+from schemas.common import UtcDatetime
 
 
 class WatchlistCategory(str, Enum):
@@ -43,8 +43,8 @@ class WatchlistEntryCreate(WatchlistEntryBase):
 class WatchlistEntryResponse(WatchlistEntryBase):
     id: int
     match_count: int  # derived, not stored -- see models/watchlist.py
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -55,6 +55,6 @@ class WatchlistMatchResponse(BaseModel):
     camera_uid: str
     matched_value: str
     confidence: Optional[float] = None
-    matched_at: datetime
+    matched_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)

@@ -2,10 +2,10 @@
 from pydantic import BaseModel, field_validator, ConfigDict
 from typing import Optional, List
 from enum import Enum
-from datetime import datetime
 
 from ai.schemas import AIProfile
 from core.sanitize import strip_html_tags
+from schemas.common import UtcDatetime
 
 
 class ProtocolType(str, Enum):
@@ -77,8 +77,8 @@ class CameraCreate(CameraBase):
 class CameraResponse(CameraBase):
     id: int
     onboarding_source: OnboardingSource = OnboardingSource.MANUAL
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
 

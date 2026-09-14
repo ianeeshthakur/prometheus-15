@@ -2,7 +2,8 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from enum import Enum
-from datetime import datetime
+
+from schemas.common import UtcDatetime
 
 
 class EventObjectType(str, Enum):
@@ -21,6 +22,6 @@ class CameraEventResponse(BaseModel):
     confidence: float
     location: Optional[str] = None
     district: Optional[str] = None
-    created_at: datetime
+    created_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)

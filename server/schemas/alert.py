@@ -2,7 +2,8 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from enum import Enum
-from datetime import datetime
+
+from schemas.common import UtcDatetime
 
 
 class AlertSeverity(str, Enum):
@@ -40,8 +41,8 @@ class AlertResponse(BaseModel):
     status: AlertStatus
     confidence: float
     investigation_id: Optional[int] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
 
     model_config = ConfigDict(from_attributes=True)
 
