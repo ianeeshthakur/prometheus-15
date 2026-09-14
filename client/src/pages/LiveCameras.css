@@ -1,0 +1,33 @@
+.live-cameras-page { display: flex; flex-direction: column; gap: 18px; padding: 4px; }
+.live-cameras-header h1 { margin: 4px 0 4px; font-size: 1.4rem; color: var(--text-primary); }
+.live-cameras-header p { margin: 0; color: var(--text-secondary); font-size: 0.85rem; }
+
+.live-cameras-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; }
+@media (max-width: 900px) { .live-cameras-layout { grid-template-columns: 1fr; } }
+
+.live-cameras-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.live-cameras-filters select { border: 1px solid var(--border-color); border-radius: 6px; padding: 7px 10px; font-size: 0.8rem; background: var(--bg-primary); color: var(--text-primary); }
+
+.live-cameras-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.live-cameras-empty { color: var(--text-secondary); font-size: 0.82rem; padding: 20px 0; }
+
+.live-camera-card { border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: var(--bg-primary); }
+.live-camera-thumb { height: 120px; background: #0f172a; color: #94a3b8; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 0.7rem; padding: 10px; }
+.live-camera-meta { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.live-camera-title-row { display: flex; align-items: center; justify-content: space-between; }
+.live-camera-id { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.75rem; font-weight: 700; color: var(--text-primary); }
+.live-camera-name { font-size: 0.82rem; color: var(--text-primary); }
+.live-camera-location { font-size: 0.72rem; color: var(--text-secondary); }
+.live-camera-tags { display: flex; gap: 6px; margin-top: 4px; }
+.live-camera-tag { font-size: 0.65rem; padding: 2px 7px; border-radius: 999px; background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border-color); }
+.live-camera-tag.ai { background: rgba(2,132,199,0.1); color: var(--accent); border-color: var(--accent); }
+
+.live-events-panel { border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; background: var(--bg-primary); height: fit-content; }
+.live-events-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.live-events-header h2 { font-size: 0.95rem; margin: 0; color: var(--text-primary); }
+.live-events-count { background: var(--accent); color: #fff; border-radius: 999px; padding: 2px 8px; font-size: 0.7rem; font-weight: 700; }
+.live-events-list { display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; }
+.live-event-row { display: flex; flex-direction: column; gap: 2px; padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.72rem; }
+.live-event-type { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--accent); font-size: 0.65rem; }
+.live-event-detail { color: var(--text-primary); }
+.live-event-time { color: var(--text-secondary); font-size: 0.65rem; }

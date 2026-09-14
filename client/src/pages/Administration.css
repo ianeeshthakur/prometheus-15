@@ -1,0 +1,26 @@
+.administration-page { display: flex; flex-direction: column; gap: 18px; padding: 4px; }
+.admin-header h1 { margin: 4px 0 4px; font-size: 1.4rem; color: var(--text-primary); }
+.admin-header p { margin: 0; color: var(--text-secondary); font-size: 0.85rem; }
+
+.admin-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border-color); padding-bottom: 2px; }
+.admin-tabs button { background: transparent; border: none; border-bottom: 2px solid transparent; padding: 10px 4px; margin-right: 16px; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; }
+.admin-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+.admin-tab-content { border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; background: var(--bg-primary); }
+.admin-tab-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 0.8rem; color: var(--text-secondary); }
+.admin-tab-toolbar button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 0.78rem; cursor: pointer; }
+
+.admin-inline-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.admin-inline-form input, .admin-inline-form select { border: 1px solid var(--border-color); border-radius: 6px; padding: 7px 10px; font-size: 0.78rem; background: var(--bg-primary); color: var(--text-primary); }
+.admin-inline-form button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 0.78rem; cursor: pointer; }
+.admin-form-error { color: #c62828; font-size: 0.75rem; width: 100%; margin: 4px 0 0; }
+.admin-permission-error { color: #c62828; font-size: 0.82rem; }
+
+.admin-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+.admin-table th { text-align: left; padding: 8px; border-bottom: 2px solid var(--border-color); color: var(--text-secondary); font-weight: 600; }
+.admin-table td { padding: 8px; border-bottom: 1px solid var(--border-color); color: var(--text-primary); }
+.admin-table td.mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+.fr-status-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); }
+.fr-status-card strong { font-size: 0.9rem; color: var(--text-primary); }
+.fr-status-card p { margin: 6px 0 0; color: var(--text-secondary); font-size: 0.78rem; max-width: 520px; }

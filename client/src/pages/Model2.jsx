@@ -1,11 +1,8 @@
 import React from 'react';
+import LiveCameras from './LiveCameras';
 
 function Model2() {
-  return (
-    <div>
-      <h1>Model 2: Unified Viewing</h1>
-    </div>
-  );
+  return <LiveCameras />;
 }
 
 export default Model2;

@@ -36,3 +36,14 @@
 .playback-button { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 12px; padding: 8px 10px; border: 1px solid #b7d8e4; border-radius: 6px; background: #fff; color: #176789; cursor: pointer; font-size: .62rem; font-weight: 700; }.playback-button.playing { background: #eaf7fc; }.playback-button span { font-size: .7rem; }
 .dispatch-actions { display: grid; gap: 8px; margin-top: 20px; }.dispatch-actions .assign-ticket { margin-top: 0; }.secondary-action { padding: 9px; border: 1px solid #d6e3e9; border-radius: 7px; background: #fff; color: #647d8d; cursor: pointer; font: inherit; font-size: .65rem; font-weight: 700; }.secondary-action.done { border-color: #bfe9dc; background: #f2fcf8; color: #16815d; }.audit-trail { display: grid; gap: 4px; margin-top: 17px; padding-top: 12px; border-top: 1px solid #e6eef1; }.audit-trail span { color: #496779; font-size: .65rem; font-weight: 800; }.audit-trail small { color: #91a3ae; font-size: .58rem; }
 @media (max-width: 620px) { .map-tools { display: block; }.alert-search { min-width: 0; }.layer-tools { margin-top: 8px; } }
+
+/* Added for real-data wiring -- docs/frontend.md. Original CSS only styled
+   .severity-dot.critical/.high; MEDIUM/LOW/INFO are real AlertSeverity values the
+   backend actually returns and need their own color. .route-map-empty is the honest
+   "nothing to show yet" state (no trace, no alert selected) replacing what used to
+   always render a fabricated route. */
+.severity-dot.medium { background: #2781aa; }
+.severity-dot.low { background: #718399; }
+.severity-dot.info { background: #94a3b8; }
+.route-map-empty { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; text-align: center; }
+.route-map-empty p { color: #9bc2cf; font-size: .8rem; max-width: 360px; margin: 0; }

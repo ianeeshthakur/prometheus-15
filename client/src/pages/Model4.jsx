@@ -1,11 +1,8 @@
 import React from 'react';
+import Analytics from './Analytics';
 
 function Model4() {
-  return (
-    <div>
-      <h1>Model 4: Central VMS/AI</h1>
-    </div>
-  );
+  return <Analytics />;
 }
 
 export default Model4;

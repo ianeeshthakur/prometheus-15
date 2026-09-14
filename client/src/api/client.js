@@ -597,30 +597,96 @@ class VistaApiClient {
 
   // --- Admin (backend/routers/admin.py, backend/routers/auth.py) -----------------
 
+  /** Admin-only on the backend (require_admin) -- a 403 here is a real "you don't
+   * have permission" fact, not the same as "the backend is unreachable." Earlier
+   * versions of this and the two methods below silently returned an empty
+   * list/default on ANY non-2xx, which would show an OPERATOR account "0 users"
+   * indistinguishable from a real, permitted, empty result. Now: network failure
+   * still falls back to mock/empty (existing behavior everywhere else in this
+   * client); a real HTTP error from a reachable backend throws so the caller can
+   * show it honestly. */
   async getUsers() {
     await this.checkBackendAvailability();
     if (!this.isMockMode) {
+      let res;
       try {
-        const res = await fetch(`${this.baseUrl}/api/auth/users`, { headers: this._authHeaders() });
-        if (res.ok) return await res.json();
+        res = await fetch(`${this.baseUrl}/api/auth/users`, { headers: this._authHeaders() });
       } catch (err) {
-        console.warn('Backend users failed, using mock:', err);
+        console.warn('Backend users unreachable, using mock:', err);
+        return [];
       }
+      if (res.ok) return await res.json();
+      throw new Error(res.status === 403 ? 'Admin access required.' : `Request failed (${res.status})`);
     }
     return [];
   }
 
-  async getAuditLog() {
+  async createUser(userData) {
+    await this.checkBackendAvailability();
+    const res = await fetch(`${this.baseUrl}/api/auth/users`, {
+      method: 'POST',
+      headers: this._authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(userData),
+    });
+    if (res.ok) return await res.json();
+    let detail = 'Failed to create user';
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      // keep generic message
+    }
+    throw new Error(detail);
+  }
+
+  /** GET /api/admin/audit-log returns {entries: [...]}, not a bare list -- unwrapped
+   * here so callers get a plain array like every other list method. */
+  async getAuditLog(limit = 100) {
     await this.checkBackendAvailability();
     if (!this.isMockMode) {
+      let res;
       try {
-        const res = await fetch(`${this.baseUrl}/api/admin/audit-log`, { headers: this._authHeaders() });
-        if (res.ok) return await res.json();
+        res = await fetch(`${this.baseUrl}/api/admin/audit-log?limit=${limit}`, { headers: this._authHeaders() });
       } catch (err) {
-        console.warn('Backend audit log failed, using mock:', err);
+        console.warn('Backend audit log unreachable, using mock:', err);
+        return [];
       }
+      if (res.ok) return (await res.json()).entries || [];
+      throw new Error(res.status === 403 ? 'Admin access required.' : `Request failed (${res.status})`);
     }
     return [];
+  }
+
+  async getFacialRecognitionStatus() {
+    await this.checkBackendAvailability();
+    if (!this.isMockMode) {
+      let res;
+      try {
+        res = await fetch(`${this.baseUrl}/api/admin/facial-recognition`, { headers: this._authHeaders() });
+      } catch (err) {
+        console.warn('Backend facial-recognition status unreachable, using mock:', err);
+        return { currently_enabled: false, history: [] };
+      }
+      if (res.ok) return await res.json();
+      throw new Error(res.status === 403 ? 'Admin access required.' : `Request failed (${res.status})`);
+    }
+    return { currently_enabled: false, history: [] };
+  }
+
+  async setFacialRecognitionAuthorization(enabled, reason) {
+    await this.checkBackendAvailability();
+    const res = await fetch(`${this.baseUrl}/api/admin/facial-recognition/authorize`, {
+      method: 'POST',
+      headers: this._authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ enabled, reason }),
+    });
+    if (res.ok) return await res.json();
+    let detail = 'Failed to update facial-recognition authorization';
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      // keep generic message
+    }
+    throw new Error(detail);
   }
 
   // Backwards-compat alias for older callers that expected a single legacy events feed.

@@ -1,11 +1,8 @@
 import React from 'react';
+import Administration from './Administration';
 
 function Settings() {
-  return (
-    <div>
-      <h1>Settings</h1>
-    </div>
-  );
+  return <Administration />;
 }
 
 export default Settings;

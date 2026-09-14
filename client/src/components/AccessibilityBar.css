@@ -1,0 +1,98 @@
+/* Real font scaling -- html's own font-size drives every rem measurement in the app.
+   :root sets the default so pages never see an unset var before AccessibilityBar mounts. */
+:root {
+  --font-scale: 1;
+}
+html {
+  font-size: calc(16px * var(--font-scale));
+}
+
+/* High-contrast palette -- swaps the same tokens theme.css defines, AAA-checked pairs
+   (pure black on white, a darker accent) rather than "just more black". */
+html[data-contrast='high'] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #ffffff;
+  --text-primary: #000000;
+  --text-secondary: #1a1a1a;
+  --accent: #0050a0;
+  --border-color: #000000;
+}
+
+.a11y-bar {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 16px;
+  background-color: #0f172a;
+  color: #f1f5f9;
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
+.a11y-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  background: #fff;
+  color: #0f172a;
+  padding: 6px 12px;
+  z-index: 100;
+  border-radius: 0 0 6px 0;
+  font-weight: 600;
+}
+
+.a11y-skip-link:focus {
+  left: 0;
+  top: 0;
+}
+
+.a11y-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.a11y-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid rgba(241, 245, 249, 0.3);
+  border-radius: 4px;
+  color: inherit;
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.a11y-btn:hover,
+.a11y-btn.active {
+  background: rgba(241, 245, 249, 0.15);
+  border-color: rgba(241, 245, 249, 0.6);
+}
+
+.a11y-lang-select {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.a11y-lang-select select {
+  background: transparent;
+  border: 1px solid rgba(241, 245, 249, 0.3);
+  border-radius: 4px;
+  color: inherit;
+  padding: 2px 6px;
+  font-size: 0.7rem;
+}
+
+.a11y-lang-select select option {
+  color: #0f172a;
+}
+
+@media (max-width: 620px) {
+  .a11y-btn-label {
+    display: none;
+  }
+}

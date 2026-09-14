@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import AccessibilityBar from './components/AccessibilityBar';
 import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
@@ -30,10 +31,11 @@ function App() {
     <div className={isLoginRoute ? '' : 'app-shell'}>
       {isLoginRoute ? <LoginScreen /> : (
         <>
+          <AccessibilityBar />
           <Topbar />
           <div className="app-body">
             <Sidebar />
-            <main className="page-content">
+            <main className="page-content" id="main-content" tabIndex={-1}>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/dashboard" element={<Navigate to="/" replace />} />

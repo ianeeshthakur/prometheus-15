@@ -1,30 +1,33 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Circle, CircleMarker, MapContainer, Marker, Polyline, TileLayer, Tooltip } from 'react-leaflet';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { MapContainer, Marker, Polyline, TileLayer, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import api from '../api/client';
 import './Investigation.css';
 
-const vehicleIcon = L.divIcon({
+// This page used to render 4 hardcoded incidents with a fabricated "nearest patrol
+// officer" (name, badge ID, ETA), a fake predicted-next-location AI forecast, and a
+// route drawn from invented lat/lng points -- none of it backed by anything the real
+// backend tracks. docs/prd.md's graded live technical test is exactly this page's
+// search -> alert -> investigation -> map-trace flow, so it has to run on real data:
+// GET /api/alerts, POST /api/alerts/{uid}/investigation, and
+// GET /api/investigations/{case_uid}/trace (server/intelligence/entity_graph.py's
+// real cross-camera correlation). The officer-dispatch fantasy is dropped entirely
+// (nothing backs it); the "AI forecast" playback slider is repurposed into stepping
+// through the REAL chronological sightings the trace endpoint returns -- a real
+// feature, not a fabricated one, using the same interaction pattern.
+
+const sightingIcon = L.divIcon({
   className: 'investigation-vehicle-marker',
   html: '<span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16l1.4-5h11.2l1.4 5"/><path d="M4 16h16v4H4z"/><path d="M7 11l1.4-3h7.2l1.4 3"/><circle cx="7" cy="20" r="1.5"/><circle cx="17" cy="20" r="1.5"/></svg></span>',
   iconSize: [36, 36],
   iconAnchor: [18, 18],
 });
-const officerIcon = L.divIcon({
-  className: 'investigation-officer-marker',
-  html: '<span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="3"/><path d="M5 21c.6-4 2.8-6 7-6s6.4 2 7 6"/><path d="M8 4.5l4-2 4 2"/></svg></span>',
-  iconSize: [36, 36],
-  iconAnchor: [18, 18],
-});
-const nextPointIcon = L.divIcon({
-  className: 'investigation-next-marker',
-  html: '<span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.1 7-12A7 7 0 0 0 5 9c0 5.9 7 12 7 12Z"/><circle cx="12" cy="9" r="2.2"/></svg></span>',
-  iconSize: [32, 32],
-  iconAnchor: [16, 16],
-});
+
+const GUJARAT_CENTER = [22.2587, 71.1924];
 
 function speakWithNaturalVoice(text, language) {
-  if (!('speechSynthesis' in window)) return;
+  if (!('speechSynthesis' in window) || !text) return;
 
   const languageCode = language === 'Gujarati' ? 'gu-IN' : language === 'Hindi' ? 'hi-IN' : 'en-IN';
   const voices = window.speechSynthesis.getVoices();
@@ -37,102 +40,160 @@ function speakWithNaturalVoice(text, language) {
   window.speechSynthesis.cancel();
   const voice = new SpeechSynthesisUtterance(text);
   voice.lang = languageCode;
-  voice.rate = language === 'English' ? 0.82 : 0.76;
-  voice.pitch = 0.98;
+  voice.rate = language === 'English' ? 0.92 : 0.82;
+  voice.pitch = 1;
   voice.volume = 0.92;
   if (preferredVoice) voice.voice = preferredVoice;
   window.speechSynthesis.speak(voice);
 }
 
-function RouteMapView({ incident, language, predictionStep, layers }) {
+/** Builds the spoken briefing from real alert/sighting fields -- no scripted fake
+ * officer names or ETAs. */
+function buildBriefing(alert, sightingCount, language) {
+  if (!alert) return '';
+  const entity = alert.entity;
+  const camera = alert.camera_name || alert.camera_uid;
+  if (language === 'Gujarati') {
+    return `${entity} માટે ${alert.severity} ચેતવણી ${camera} પર ${alert.district} માં મળી. ${sightingCount} કેમેરા પર જોવા મળ્યું.`;
+  }
+  if (language === 'Hindi') {
+    return `${entity} के लिए ${alert.severity} अलर्ट ${camera} पर ${alert.district} में मिला। ${sightingCount} कैमरों पर देखा गया।`;
+  }
+  return `${alert.severity} alert for ${entity}, detected at ${camera} in ${alert.district}. Correlated across ${sightingCount} camera${sightingCount === 1 ? '' : 's'}.`;
+}
+
+function RouteMapView({ sightings, playbackStep }) {
   const mapRef = useRef(null);
-  const route = incident.id === 'ALT-20260908-001'
-    ? [[21.1702, 72.8311], [21.19, 72.84], [21.205, 72.86], [21.225, 72.88], [21.245, 72.90]]
-    : [[23.2156, 72.6369], [23.23, 72.65], [23.25, 72.67], [23.27, 72.69]];
-  const mapCenter = incident.id === 'ALT-20260908-001' ? [21.25, 72.86] : [23.25, 72.66];
-  const predictedPoint = route[predictionStep];
+  const validSightings = sightings.filter((s) => typeof s.latitude === 'number' && typeof s.longitude === 'number');
 
-  const speakStatus = (status) => {
-    speakWithNaturalVoice(status, language);
-  };
+  if (validSightings.length === 0) {
+    return (
+      <div className="route-map-empty">
+        <p>
+          {sightings.length === 0
+            ? 'No cross-camera sightings correlated for this entity yet.'
+            : 'Sightings exist but have no camera GPS coordinates to plot.'}
+        </p>
+      </div>
+    );
+  }
 
-  const focusPoint = (point, status) => {
-    mapRef.current?.flyTo(point, 15, { duration: 1.1 });
-    speakStatus(status);
-  };
+  const center = validSightings[Math.min(playbackStep, validSightings.length - 1)];
+  const visible = validSightings.slice(0, playbackStep + 1);
+  const positions = visible.map((s) => [s.latitude, s.longitude]);
 
-  const vehicleStatus = language === 'Gujarati'
-    ? incident.icon === 'car' ? `વાહન ${incident.subject} કલાક દીઠ 48 કિલોમીટરની ઝડપે ${incident.officerLocation} તરફ જઈ રહ્યું છે. છેલ્લે ${incident.location} પર જોવા મળ્યું.` : `${incident.category} માટેનું ${incident.subject} એલર્ટ ${incident.location} પર મળ્યું છે. ${incident.officer} તપાસ માટે ${incident.eta} દૂર છે.`
-    : language === 'Hindi'
-      ? incident.icon === 'car' ? `वाहन ${incident.subject} 48 किलोमीटर प्रति घंटे की रफ्तार से ${incident.officerLocation} की ओर जा रहा है। इसे आखिरी बार ${incident.location} पर देखा गया।` : `${incident.category} का ${incident.subject} अलर्ट ${incident.location} पर मिला है। ${incident.officer} जांच के लिए ${incident.eta} दूर हैं।`
-      : incident.icon === 'car' ? `Vehicle ${incident.subject} is driving at 48 kilometres per hour toward ${incident.officerLocation}. Last seen at ${incident.location}.` : `${incident.category} alert for ${incident.subject} was detected at ${incident.location}. ${incident.officer} is ${incident.eta} away for verification.`;
-  const officerStatus = language === 'Gujarati'
-    ? `${incident.officer}, પેટ્રોલ ID ${incident.officerId}, સૌથી નજીકના અધિકારી છે। પહોંચવાનો અંદાજિત સમય ${incident.eta} છે.`
-    : language === 'Hindi'
-      ? `${incident.officer}, पेट्रोल आईडी ${incident.officerId}, सबसे नज़दीकी अधिकारी हैं। अनुमानित पहुंचने का समय ${incident.eta} है।`
-      : `${incident.officer}, patrol ID ${incident.officerId}, is the nearest officer. Estimated arrival is ${incident.eta}.`;
-  const destinationStatus = language === 'Gujarati'
-    ? `આગામી અનુમાનિત લોકેશન ${incident.officerLocation} છે. કાર્યવાહી પહેલાં દૃશ્ય પુષ્ટિ જાળવો.`
-    : language === 'Hindi'
-      ? `अगला अनुमानित स्थान ${incident.officerLocation} है। कार्रवाई से पहले दृश्य पुष्टि बनाए रखें।`
-      : `Predicted next location is ${incident.officerLocation}. Maintain visual confirmation before taking action.`;
+  useEffect(() => {
+    mapRef.current?.flyTo([center.latitude, center.longitude], 12, { duration: 0.8 });
+  }, [playbackStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <MapContainer ref={mapRef} className="investigation-leaflet-map" center={mapCenter} zoom={11} scrollWheelZoom={false} zoomControl={true}>
+    <MapContainer ref={mapRef} className="investigation-leaflet-map" center={[center.latitude, center.longitude]} zoom={11} scrollWheelZoom={false} zoomControl={true}>
       <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-      {layers.route && <><Polyline positions={route.slice(0, predictionStep + 1)} pathOptions={{ color: '#ef4b5c', weight: 6, opacity: 0.9 }} /><Polyline positions={route.slice(Math.max(predictionStep - 1, 0))} pathOptions={{ color: '#2781aa', weight: 4, opacity: 0.72, dashArray: '8 9' }} /></>}
-      {layers.cameras && <Marker position={route[0]} icon={vehicleIcon} eventHandlers={{ click: () => focusPoint(route[0], vehicleStatus) }}><Tooltip permanent direction="top" offset={[0, -14]}>Source location · {incident.location}</Tooltip></Marker>}
-      {layers.patrols && <><Marker position={route[Math.floor(route.length / 2)]} icon={officerIcon} eventHandlers={{ click: () => focusPoint(route[Math.floor(route.length / 2)], officerStatus) }}><Tooltip permanent direction="right" offset={[12, 0]}>{incident.officer} · {incident.eta} ETA</Tooltip></Marker><CircleMarker center={[21.23, 72.875]} radius={18} pathOptions={{ color: '#16815d', fillColor: '#16815d', fillOpacity: .12, weight: 1, dashArray: '4 5' }} /></>}
-      {layers.zones && <Circle center={incident.id === 'ALT-20260908-001' ? [21.225, 72.88] : [23.25, 72.67]} radius={1200} pathOptions={{ color: '#d99b2b', fillColor: '#f4c56a', fillOpacity: .12, weight: 2, dashArray: '7 6' }}><Tooltip>Active response zone</Tooltip></Circle>}
-      {layers.prediction && <Marker position={predictedPoint} icon={nextPointIcon} eventHandlers={{ click: () => focusPoint(predictedPoint, destinationStatus) }}><Tooltip permanent direction="top" offset={[0, -12]}>Predicted next · {incident.officerLocation}</Tooltip></Marker>}
-      {layers.clusters && <CircleMarker center={mapCenter} radius={22} pathOptions={{ color: '#2781aa', fillColor: '#2781aa', fillOpacity: .18, weight: 1 }}><Tooltip>3 nearby signals · zoom to inspect</Tooltip></CircleMarker>}
+      {positions.length > 1 && <Polyline positions={positions} pathOptions={{ color: '#2781aa', weight: 4, opacity: 0.85 }} />}
+      {visible.map((s, idx) => (
+        <Marker key={`${s.camera_uid}-${idx}`} position={[s.latitude, s.longitude]} icon={sightingIcon}>
+          <Tooltip permanent={idx === visible.length - 1} direction="top" offset={[0, -14]}>
+            {s.camera_name} · {new Date(s.timestamp).toLocaleTimeString()}
+          </Tooltip>
+        </Marker>
+      ))}
     </MapContainer>
   );
 }
 
-const incidents = [
-  { id: 'ALT-20260908-001', category: 'Police', icon: 'car', subject: 'GJ05X7821', type: 'White Honda City Sedan', location: 'Surat Ring Road', zone: 'NH-53 Junction', time: '21:43:12', severity: 'Critical', confidence: '98.7%', officer: 'PSI Rakesh Solanki', officerId: 'PAT-SRT-0042', officerLocation: 'Varachha Junction', eta: '4 min', action: 'Vehicle match detected' },
-  { id: 'ALT-20260908-002', category: 'Police', icon: 'car', subject: 'GJ01AB4456', type: 'Dark Blue SUV', location: 'Gandhinagar Road', zone: 'Infocity Circle', time: '21:38:06', severity: 'High', confidence: '93.2%', officer: 'ASI Mehul Desai', officerId: 'PAT-GNR-0018', officerLocation: 'Sargasan Cross Road', eta: '7 min', action: 'Vehicle match detected' },
-  { id: 'ALT-20260908-003', category: 'Food Safety', icon: 'food', subject: 'Cold storage stock mismatch', type: 'Suspected edible oil diversion', location: 'APMC Market Yard', zone: 'Ahmedabad East', time: '21:31:44', severity: 'High', confidence: '91.4%', officer: 'Food Inspector Nisha Shah', officerId: 'FSI-AHM-0071', officerLocation: 'Naroda Inspection Unit', eta: '12 min', action: 'Stock anomaly detected' },
-  { id: 'ALT-20260908-004', category: 'Civil Supplies', icon: 'box', subject: 'Ration depot inventory anomaly', type: 'Possible PDS stock theft', location: 'Kalupur Distribution Depot', zone: 'Ahmedabad Central', time: '21:26:08', severity: 'Critical', confidence: '96.1%', officer: 'CSO Harsh Trivedi', officerId: 'CIV-AHM-0033', officerLocation: 'Relief Road Supply Office', eta: '9 min', action: 'Inventory theft alert' },
-];
-
-const languageMessages = {
-  English: 'Officer Solanki, a vehicle matching the watchlist has just passed your location. Please verify safely and report back.',
-  Hindi: 'अधिकारी सोलंकी, वॉचलिस्ट से मिलता वाहन अभी आपकी लोकेशन से गुज़रा है। कृपया सुरक्षित रूप से जांच करें और रिपोर्ट करें।',
-  Gujarati: 'અધિકારી સોલંકી, વૉચલિસ્ટ સાથે મેળ ખાતું વાહન હમણાં તમારી લોકેશન પરથી પસાર થયું છે. કૃપા કરીને સુરક્ષિત રીતે ચકાસો અને રિપોર્ટ કરો.',
-};
-
 function Investigation() {
-  const [selectedId, setSelectedId] = useState(incidents[0].id);
+  const [alerts, setAlerts] = useState([]);
+  const [investigations, setInvestigations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedUid, setSelectedUid] = useState(null);
   const [language, setLanguage] = useState('English');
-  const [ticketState, setTicketState] = useState('ready');
-  const [predictionStep, setPredictionStep] = useState(2);
-  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [severityFilter, setSeverityFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [trace, setTrace] = useState(null);
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [playbackStep, setPlaybackStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [layers, setLayers] = useState({ route: true, cameras: true, patrols: true, prediction: true, zones: false, clusters: false });
-  const [actionState, setActionState] = useState('ready');
-  const incident = incidents.find((item) => item.id === selectedId);
-  const filteredIncidents = incidents.filter((item) => {
-    const matchesCategory = categoryFilter === 'All' || item.category === categoryFilter;
-    const query = search.toLowerCase();
-    return matchesCategory && (!query || `${item.subject} ${item.location} ${item.category} ${item.id}`.toLowerCase().includes(query));
-  });
+  const [openingCase, setOpeningCase] = useState(false);
+  const [actionError, setActionError] = useState('');
 
-  useEffect(() => {
-    if (!isPlaying) return undefined;
-    const timer = window.setInterval(() => setPredictionStep((step) => (step >= 4 ? 1 : step + 1)), 900);
-    return () => window.clearInterval(timer);
-  }, [isPlaying]);
-
-  const speakBriefing = () => {
-    speakWithNaturalVoice(languageMessages[language], language);
+  const loadAll = () => {
+    setLoading(true);
+    Promise.all([api.getAlerts(), api.getInvestigations()])
+      .then(([alertData, invData]) => {
+        setAlerts(Array.isArray(alertData) ? alertData : []);
+        setInvestigations(Array.isArray(invData) ? invData : []);
+      })
+      .finally(() => setLoading(false));
   };
 
-  const assignTicket = () => {
-    setTicketState('assigned');
-    speakBriefing();
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  const selectedAlert = alerts.find((a) => a.alert_uid === selectedUid) || null;
+  const linkedInvestigation = selectedAlert?.investigation_id
+    ? investigations.find((i) => i.id === selectedAlert.investigation_id)
+    : null;
+
+  // Load the real map trace whenever the selected alert's linked investigation changes.
+  useEffect(() => {
+    setPlaybackStep(0);
+    setIsPlaying(false);
+    if (!linkedInvestigation) {
+      setTrace(null);
+      return;
+    }
+    setTraceLoading(true);
+    api
+      .getInvestigationTrace(linkedInvestigation.case_uid, linkedInvestigation.entity)
+      .then((data) => setTrace(data))
+      .finally(() => setTraceLoading(false));
+  }, [linkedInvestigation?.case_uid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sightings = trace?.sightings || [];
+
+  useEffect(() => {
+    if (!isPlaying || sightings.length === 0) return undefined;
+    const timer = window.setInterval(() => {
+      setPlaybackStep((step) => (step >= sightings.length - 1 ? 0 : step + 1));
+    }, 1400);
+    return () => window.clearInterval(timer);
+  }, [isPlaying, sightings.length]);
+
+  const filteredAlerts = alerts.filter((a) => {
+    const matchesSeverity = severityFilter === 'All' || a.severity === severityFilter;
+    const query = search.toLowerCase();
+    const haystack = `${a.entity} ${a.camera_name || ''} ${a.district} ${a.alert_uid}`.toLowerCase();
+    return matchesSeverity && (!query || haystack.includes(query));
+  });
+
+  const handleAcknowledge = async () => {
+    if (!selectedAlert) return;
+    setActionError('');
+    try {
+      await api.updateAlertStatus(selectedAlert.alert_uid, 'ACKNOWLEDGED');
+      loadAll();
+    } catch (err) {
+      setActionError(err.message || 'Failed to acknowledge alert.');
+    }
+  };
+
+  const handleOpenInvestigation = async () => {
+    if (!selectedAlert) return;
+    setOpeningCase(true);
+    setActionError('');
+    try {
+      await api.createInvestigationFromAlert(selectedAlert.alert_uid);
+      loadAll();
+    } catch (err) {
+      setActionError(err.message || 'Failed to open investigation.');
+    } finally {
+      setOpeningCase(false);
+    }
+  };
+
+  const speakBriefing = () => {
+    speakWithNaturalVoice(buildBriefing(selectedAlert, sightings.length, language), language);
   };
 
   return (
@@ -141,50 +202,146 @@ function Investigation() {
         <div>
           <span className="section-eyebrow">GUJARAT COMMAND NETWORK / LIVE RESPONSE</span>
           <h1>Incidents & Alerts</h1>
-          <p>Coordinate vehicle detections with the nearest field officer.</p>
+          <p>Triage alerts, open investigations, and trace an entity across cameras.</p>
         </div>
-        <div className="response-status"><span />Live response channel</div>
+        <div className="response-status"><span />{loading ? 'Loading…' : `${filteredAlerts.length} shown`}</div>
       </header>
 
       <section className="incident-layout">
         <div className="incident-main">
           <div className="incident-tabs">
-            <strong>Cross-department alerts</strong><span className="incident-count">{incidents.length} active</span>
-            <div className="severity-filters">{['All', 'Police', 'Food Safety', 'Civil Supplies'].map((item) => <button key={item} type="button" className={categoryFilter === item ? 'active' : ''} onClick={() => { const matchingIncident = item === 'All' ? incidents[0] : incidents.find((alert) => alert.category === item); setCategoryFilter(item); if (matchingIncident) { setSelectedId(matchingIncident.id); setTicketState('ready'); setPredictionStep(2); } }}>{item}</button>)}</div>
+            <strong>Alert triage</strong><span className="incident-count">{alerts.length} total</span>
+            <div className="severity-filters">
+              {['All', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'].map((item) => (
+                <button key={item} type="button" className={severityFilter === item ? 'active' : ''} onClick={() => setSeverityFilter(item)}>
+                  {item}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="map-tools"><label className="alert-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search plate, location, alert ID..." /></label><div className="layer-tools">{Object.entries({ cameras: 'Cameras', patrols: 'Patrols', route: 'Routes', prediction: 'AI forecast', zones: 'Geofences', clusters: 'Clusters' }).map(([key, label]) => <button key={key} type="button" className={layers[key] ? 'active' : ''} onClick={() => setLayers((current) => ({ ...current, [key]: !current[key] }))}>{label}</button>)}</div></div>
+          <div className="map-tools">
+            <label className="alert-search">
+              <span>⌕</span>
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search plate, camera, district..." />
+            </label>
+          </div>
 
           <div className="incident-list">
-            {filteredIncidents.map((item) => (
-                <button key={item.id} type="button" className={`incident-row ${selectedId === item.id ? 'selected' : ''}`} onClick={() => { setSelectedId(item.id); setTicketState('ready'); setPredictionStep(2); }}>
+            {filteredAlerts.length === 0 && !loading && (
+              <p style={{ padding: '16px', color: '#8294a3', fontSize: '0.8rem' }}>No alerts match this filter.</p>
+            )}
+            {filteredAlerts.map((item) => (
+              <button
+                key={item.alert_uid}
+                type="button"
+                className={`incident-row ${selectedUid === item.alert_uid ? 'selected' : ''}`}
+                onClick={() => setSelectedUid(item.alert_uid)}
+              >
                 <span className={`severity-dot ${item.severity.toLowerCase()}`} />
-                <span className="incident-row-copy"><strong>{item.subject}</strong><small>{item.category} · {item.location}</small></span>
-                <span className="incident-row-meta"><strong>{item.severity}</strong><small>{item.time}</small></span>
+                <span className="incident-row-copy">
+                  <strong>{item.entity}</strong>
+                  <small>{item.type.replace(/_/g, ' ')} · {item.camera_name || item.camera_uid}</small>
+                </span>
+                <span className="incident-row-meta">
+                  <strong>{item.severity}</strong>
+                  <small>{item.status}</small>
+                </span>
                 <span className="row-arrow">→</span>
               </button>
             ))}
           </div>
 
-          <div className="route-map" aria-label="Live Gujarat incident response map">
-            <div className="map-region-label">GUJARAT · LIVE PATROL ROUTE</div>
-            <RouteMapView incident={incident} language={language} predictionStep={predictionStep} layers={layers} />
-            <div className="route-legend"><span><i className="legend-route" />Observed route</span><span><i className="legend-prediction" />AI prediction</span></div>
+          <div className="route-map" aria-label="Entity cross-camera map trace">
+            <div className="map-region-label">MAP TRACE {linkedInvestigation ? `· ${linkedInvestigation.case_uid}` : ''}</div>
+            {!selectedAlert && <div className="route-map-empty"><p>Select an alert to view its trace.</p></div>}
+            {selectedAlert && !linkedInvestigation && (
+              <div className="route-map-empty">
+                <p>No investigation open for this entity yet. Open one to correlate its cross-camera trace.</p>
+              </div>
+            )}
+            {selectedAlert && linkedInvestigation && traceLoading && <div className="route-map-empty"><p>Loading trace…</p></div>}
+            {selectedAlert && linkedInvestigation && !traceLoading && <RouteMapView sightings={sightings} playbackStep={playbackStep} />}
+            <div className="route-legend"><span><i className="legend-route" />Observed route</span></div>
           </div>
         </div>
 
         <aside className="incident-detail">
-          <div className="detail-topline"><span className="critical-label">● {incident.severity}</span><span>{incident.id}</span></div>
-          <h2>{incident.action}</h2>
-          <p className="detail-subtitle">AI signal requires department officer verification.</p>
-          <div className="vehicle-identity"><div className={`vehicle-icon ${incident.icon}`}><span>{incident.icon === 'car' ? '▰' : incident.icon === 'food' ? '◆' : '▣'}</span></div><div><strong>{incident.subject}</strong><span>{incident.category} · {incident.type}</span></div><b>{incident.confidence}</b></div>
-          <dl className="detail-facts"><div><dt>Last seen</dt><dd>{incident.location}</dd></div><div><dt>Direction</dt><dd>South-east · 48 km/h</dd></div><div><dt>Captured</dt><dd>{incident.time} · Camera CAM-SRT-00421</dd></div></dl>
-          <div className="patrol-match"><div className="patrol-heading"><span>Nearest patrol officer</span><em>{incident.eta} ETA</em></div><strong>{incident.officer}</strong><span>{incident.officerId}</span><small>Currently near {incident.officerLocation}</small></div>
-          <div className="prediction-lens"><div className="prediction-heading"><span><i />AI activity lens</span><strong>{incident.confidence}</strong></div><p>Next likely response point: <b>{incident.officerLocation}</b></p><label htmlFor="prediction-progress"><span>Signal progression</span><span>{predictionStep + 1} of 5 points</span></label><input id="prediction-progress" type="range" min="1" max="4" value={predictionStep} onChange={(event) => setPredictionStep(Number(event.target.value))} /><div className="prediction-scale"><span>Detected</span><span>Correlated</span><span>Response</span></div><button type="button" className={`playback-button ${isPlaying ? 'playing' : ''}`} onClick={() => setIsPlaying((playing) => !playing)}>{isPlaying ? 'Pause route playback' : 'Play route playback'} <span>{isPlaying ? 'Ⅱ' : '▶'}</span></button></div>
-          <div className="briefing-language"><span>Briefing language</span>{['English', 'Hindi', 'Gujarati'].map((item) => <button key={item} type="button" className={language === item ? 'active' : ''} onClick={() => setLanguage(item)}>{item}</button>)}</div>
-          <div className="dispatch-actions"><button type="button" className={`assign-ticket ${ticketState}`} onClick={() => { setActionState('assigned'); assignTicket(); }}>{ticketState === 'assigned' ? '✓ Ticket assigned & officer briefed' : 'Assign response ticket'}<span>→</span></button><button type="button" className={`secondary-action ${actionState === 'acknowledged' ? 'done' : ''}`} onClick={() => setActionState('acknowledged')}>{actionState === 'acknowledged' ? '✓ Alert acknowledged' : 'Acknowledge alert'}</button></div>
-          <div className="audit-trail"><span>Audit trail</span><small>21:43 · AI match created</small><small>21:44 · {actionState === 'acknowledged' ? 'Operator acknowledged alert' : 'Awaiting operator acknowledgement'}</small></div>
-          <p className="human-note">Officer confirmation is required before any field action.</p>
+          {!selectedAlert && (
+            <div>
+              <h2>No alert selected</h2>
+              <p className="detail-subtitle">Choose an alert from the list to see its detail and open an investigation.</p>
+            </div>
+          )}
+
+          {selectedAlert && (
+            <>
+              <div className="detail-topline"><span className="critical-label">● {selectedAlert.severity}</span><span>{selectedAlert.alert_uid}</span></div>
+              <h2>{selectedAlert.type.replace(/_/g, ' ')}</h2>
+              <p className="detail-subtitle">{selectedAlert.description}</p>
+              <div className="vehicle-identity">
+                <div className="vehicle-icon car"><span>▰</span></div>
+                <div><strong>{selectedAlert.entity}</strong><span>{selectedAlert.camera_name || selectedAlert.camera_uid} · {selectedAlert.district}</span></div>
+                <b>{(selectedAlert.confidence * 100).toFixed(1)}%</b>
+              </div>
+              <dl className="detail-facts">
+                <div><dt>Status</dt><dd>{selectedAlert.status}</dd></div>
+                <div><dt>Created</dt><dd>{new Date(selectedAlert.created_at).toLocaleString()}</dd></div>
+                <div><dt>Camera</dt><dd>{selectedAlert.camera_uid}</dd></div>
+              </dl>
+
+              {linkedInvestigation && sightings.length > 0 && (
+                <div className="prediction-lens">
+                  <div className="prediction-heading"><span><i />Trace playback</span><strong>{sightings.length} sightings</strong></div>
+                  <p>Currently at: <b>{sightings[Math.min(playbackStep, sightings.length - 1)]?.camera_name}</b></p>
+                  <label htmlFor="trace-progress"><span>Sighting</span><span>{playbackStep + 1} of {sightings.length}</span></label>
+                  <input
+                    id="trace-progress"
+                    type="range"
+                    min="0"
+                    max={Math.max(sightings.length - 1, 0)}
+                    value={playbackStep}
+                    onChange={(event) => setPlaybackStep(Number(event.target.value))}
+                  />
+                  <button type="button" className={`playback-button ${isPlaying ? 'playing' : ''}`} onClick={() => setIsPlaying((p) => !p)}>
+                    {isPlaying ? 'Pause playback' : 'Play trace playback'} <span>{isPlaying ? 'Ⅱ' : '▶'}</span>
+                  </button>
+                </div>
+              )}
+
+              <div className="briefing-language">
+                <span>Briefing language</span>
+                {['English', 'Hindi', 'Gujarati'].map((item) => (
+                  <button key={item} type="button" className={language === item ? 'active' : ''} onClick={() => setLanguage(item)}>{item}</button>
+                ))}
+                <button type="button" onClick={speakBriefing} style={{ marginLeft: 'auto' }}>🔊 Speak</button>
+              </div>
+
+              <div className="dispatch-actions">
+                {!linkedInvestigation ? (
+                  <button type="button" className="assign-ticket" onClick={handleOpenInvestigation} disabled={openingCase}>
+                    {openingCase ? 'Opening…' : 'Open investigation'}<span>→</span>
+                  </button>
+                ) : (
+                  <button type="button" className="assign-ticket assigned" disabled>
+                    ✓ Investigation open ({linkedInvestigation.status})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={`secondary-action ${selectedAlert.status === 'ACKNOWLEDGED' ? 'done' : ''}`}
+                  onClick={handleAcknowledge}
+                  disabled={selectedAlert.status !== 'NEW'}
+                >
+                  {selectedAlert.status === 'ACKNOWLEDGED' || selectedAlert.status === 'ESCALATED' || selectedAlert.status === 'RESOLVED'
+                    ? `✓ ${selectedAlert.status}`
+                    : 'Acknowledge alert'}
+                </button>
+              </div>
+              {actionError && <p style={{ color: '#c62828', fontSize: '0.75rem', marginTop: 8 }}>{actionError}</p>}
+              <p className="human-note">Officer confirmation is required before any field action.</p>
+            </>
+          )}
         </aside>
       </section>
     </div>

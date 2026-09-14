@@ -3,33 +3,63 @@ import { useNavigate } from 'react-router-dom';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
 import DataTable from '../components/DataTable';
-import { MOCK_CAMERAS, getCCTVRegistryStats } from '../api/mockData';
+import { getCCTVRegistryStats } from '../api/mockData';
+import api from '../api/client';
 import './CameraRegistry.css';
+
+// docs/backend.md's real CameraCreate schema (server/schemas/camera.py) -- only these
+// map to a field the backend actually stores. The original mock form also collected
+// `type`/`resolution`/`power_source`/`warranty_status`, none of which the backend has
+// a column for; keeping them in the "add camera" form would silently discard them on
+// submit while the success toast implied everything was saved. Dropped rather than
+// kept as decoration.
+const PROTOCOL_TYPES = ['RTSP', 'HLS', 'ONVIF', 'VENDOR_SDK'];
+const CAMERA_STATUSES = ['ACTIVE', 'INACTIVE', 'DEGRADED', 'OFFLINE'];
+const AI_PROFILES = ['TRAFFIC', 'SECURITY', 'RTO'];
+// prd.md §0.1's actual named departments, not the mock's invented "Municipal
+// Corporation/Transport/Education" list.
+const DEPARTMENTS = ['Police', 'Health', 'GSRTC', 'Panchayat', 'Municipal', 'Food & Civil Supplies', 'RTO'];
+const DISTRICTS = ['Ahmedabad', 'Surat', 'Vadodara', 'Gandhinagar', 'Rajkot', 'Bhavnagar', 'Jamnagar', 'Kutch'];
+
+const emptyNewCameraForm = {
+  camera_uid: '',
+  name: '',
+  department: 'Police',
+  district: 'Ahmedabad',
+  location: '',
+  vms_vendor: '',
+  protocol_type: 'RTSP',
+  status: 'ACTIVE',
+  ai_enabled: true,
+  ai_profile: 'TRAFFIC',
+  latitude: '',
+  longitude: '',
+};
 
 function CameraRegistry() {
   const navigate = useNavigate();
-  const [cameras, setCameras] = useState(MOCK_CAMERAS);
+  const [cameras, setCameras] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCamera, setSelectedCamera] = useState(null);
   const [activeTab, setActiveTab] = useState('Details');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  // New Camera Form State
-  const [newCameraForm, setNewCameraForm] = useState({
-    camera_uid: '',
-    name: '',
-    department: 'Police',
-    district: 'Ahmedabad',
-    location: '',
-    type: 'PTZ Dome',
-    resolution: '4K (3840x2160)',
-    vms_vendor: 'Axis Communications',
-    protocol_type: 'RTSP',
-    power_source: 'PoE+ (IEEE 802.3at)',
-    status: 'Online',
-    latitude: 23.0225,
-    longitude: 72.5714,
-  });
+  const [newCameraForm, setNewCameraForm] = useState(emptyNewCameraForm);
+
+  const loadCameras = () => {
+    setLoading(true);
+    api
+      .getCameras()
+      .then((data) => setCameras(Array.isArray(data) ? data : []))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadCameras();
+  }, []);
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -62,80 +92,49 @@ function CameraRegistry() {
     navigate(`/model-2?camera=${camId}`);
   };
 
-  // Handle Add Camera Submit
-  const handleAddCameraSubmit = (e) => {
+  // Handle Add Camera Submit -- real POST /api/cameras/ (server/routers/cameras.py),
+  // not a local-only array push. camera_uid is auto-generated only as a convenience
+  // when left blank; the backend rejects a duplicate either way (409), which
+  // handleAddCameraSubmit surfaces as a real form error, not a silent no-op.
+  const handleAddCameraSubmit = async (e) => {
     e.preventDefault();
-    if (!newCameraForm.name || !newCameraForm.location) {
-      alert('Please enter camera name and location.');
+    setFormError('');
+    if (!newCameraForm.name || !newCameraForm.location || !newCameraForm.vms_vendor) {
+      setFormError('Please fill in name, location, and hardware vendor.');
       return;
     }
 
     const generatedUid =
       newCameraForm.camera_uid ||
-      `CAM-${newCameraForm.district.substring(0, 3).toUpperCase()}-${String(
-        cameras.length + 1
-      ).padStart(3, '0')}`;
+      `CAM-${newCameraForm.district.substring(0, 3).toUpperCase()}-${String(cameras.length + 1).padStart(3, '0')}`;
 
-    const newCam = {
-      id: cameras.length + 1,
+    const payload = {
       camera_uid: generatedUid,
       name: newCameraForm.name,
       department: newCameraForm.department,
       district: newCameraForm.district,
       location: newCameraForm.location,
-      type: newCameraForm.type,
-      latitude: parseFloat(newCameraForm.latitude) || 23.0225,
-      longitude: parseFloat(newCameraForm.longitude) || 72.5714,
       vms_vendor: newCameraForm.vms_vendor,
       protocol_type: newCameraForm.protocol_type,
       status: newCameraForm.status,
-      installed_on: new Date().toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      }),
-      power_source: newCameraForm.power_source,
-      warranty_status: 'Active (3-Year AMC)',
-      ai_enabled: true,
-      fps: 30,
-      resolution: newCameraForm.resolution,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      maintenance: {
-        last_serviced: 'Today (Commissioned)',
-        next_scheduled: 'In 3 Months',
-        contractor: 'Gujarat State Telecom SPV',
-        firmware: 'v4.14.0 (Factory Sealed)',
-        uptime_pct: '100.0%',
-      },
-      history: [
-        {
-          date: new Date().toISOString().replace('T', ' ').substring(0, 16),
-          event: 'Asset registered in Gujarat Central CCTV Inventory',
-          author: 'Operator PSI',
-        },
-      ],
+      ai_enabled: newCameraForm.ai_enabled,
+      ai_profile: newCameraForm.ai_profile,
+      latitude: newCameraForm.latitude === '' ? null : parseFloat(newCameraForm.latitude),
+      longitude: newCameraForm.longitude === '' ? null : parseFloat(newCameraForm.longitude),
     };
 
-    setCameras([newCam, ...cameras]);
-    setIsAddModalOpen(false);
-    showToast(`Registered ${generatedUid} successfully.`);
-    // Reset form
-    setNewCameraForm({
-      camera_uid: '',
-      name: '',
-      department: 'Police',
-      district: 'Ahmedabad',
-      location: '',
-      type: 'PTZ Dome',
-      resolution: '4K (3840x2160)',
-      vms_vendor: 'Axis Communications',
-      protocol_type: 'RTSP',
-      power_source: 'PoE+ (IEEE 802.3at)',
-      status: 'Online',
-      latitude: 23.0225,
-      longitude: 72.5714,
-    });
+    setSubmitting(true);
+    try {
+      await api.createCamera(payload);
+      setIsAddModalOpen(false);
+      showToast(`Registered ${generatedUid} successfully.`);
+      setNewCameraForm(emptyNewCameraForm);
+      loadCameras();
+    } catch (err) {
+      setFormError(err.message || 'Failed to register camera.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // DataTable Column Definitions
@@ -173,11 +172,11 @@ function CameraRegistry() {
         ),
       },
       {
-        key: 'type',
-        label: 'Type',
+        key: 'protocol_type',
+        label: 'Protocol',
         sortable: true,
-        width: '140px',
-        render: (val) => <span className="cam-type-cell">{val || 'PTZ Dome'}</span>,
+        width: '120px',
+        render: (val) => <span className="cam-type-cell">{val || '—'}</span>,
       },
       {
         key: 'status',
@@ -187,11 +186,18 @@ function CameraRegistry() {
         render: (val) => <StatusBadge status={val} size="sm" />,
       },
       {
-        key: 'installed_on',
-        label: 'Installed On',
+        key: 'onboarding_source',
+        label: 'Onboarded via',
         sortable: true,
         width: '130px',
-        render: (val) => <span className="cam-date-cell">{val || '12 Jan 2025'}</span>,
+        render: (val) => <span className="cam-date-cell">{val || 'MANUAL'}</span>,
+      },
+      {
+        key: 'created_at',
+        label: 'Registered',
+        sortable: true,
+        width: '130px',
+        render: (val) => <span className="cam-date-cell">{val ? new Date(val).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>,
       },
       {
         key: 'actions',
@@ -222,63 +228,34 @@ function CameraRegistry() {
     []
   );
 
-  // DataTable Filters configuration
+  // DataTable Filters configuration -- values now match the real backend's fields
+  // (server/schemas/camera.py) instead of the mock's invented department/type
+  // vocabulary, which real camera rows would never match against.
   const filters = useMemo(
     () => [
       {
         key: 'department',
         label: 'Department',
         placeholder: 'All Departments',
-        options: [
-          { value: 'ALL', label: 'All Departments' },
-          { value: 'Police', label: 'Police' },
-          { value: 'Municipal Corporation', label: 'Municipal Corporation' },
-          { value: 'Transport', label: 'Transport' },
-          { value: 'Education', label: 'Education' },
-          { value: 'Health', label: 'Health' },
-        ],
+        options: [{ value: 'ALL', label: 'All Departments' }, ...DEPARTMENTS.map((d) => ({ value: d, label: d }))],
       },
       {
         key: 'district',
         label: 'District',
         placeholder: 'All Districts',
-        options: [
-          { value: 'ALL', label: 'All Districts' },
-          { value: 'Ahmedabad', label: 'Ahmedabad' },
-          { value: 'Surat', label: 'Surat' },
-          { value: 'Vadodara', label: 'Vadodara' },
-          { value: 'Gandhinagar', label: 'Gandhinagar' },
-          { value: 'Rajkot', label: 'Rajkot' },
-          { value: 'Bhavnagar', label: 'Bhavnagar' },
-          { value: 'Jamnagar', label: 'Jamnagar' },
-          { value: 'Kutch', label: 'Kutch' },
-        ],
+        options: [{ value: 'ALL', label: 'All Districts' }, ...DISTRICTS.map((d) => ({ value: d, label: d }))],
       },
       {
-        key: 'type',
-        label: 'Type',
-        placeholder: 'All Types',
-        options: [
-          { value: 'ALL', label: 'All Camera Types' },
-          { value: 'PTZ Dome', label: 'PTZ Dome' },
-          { value: 'Bullet Fixed', label: 'Bullet Fixed' },
-          { value: 'ANPR High-Speed', label: 'ANPR High-Speed' },
-          { value: 'Fisheye 360°', label: 'Fisheye 360°' },
-          { value: 'Box Thermal', label: 'Box Thermal' },
-        ],
+        key: 'protocol_type',
+        label: 'Protocol',
+        placeholder: 'All Protocols',
+        options: [{ value: 'ALL', label: 'All Protocols' }, ...PROTOCOL_TYPES.map((p) => ({ value: p, label: p }))],
       },
       {
         key: 'status',
         label: 'Status',
         placeholder: 'All Statuses',
-        options: [
-          { value: 'ALL', label: 'All Statuses' },
-          { value: 'Online', label: 'Online' },
-          { value: 'Active', label: 'Active' },
-          { value: 'Maintenance', label: 'Maintenance' },
-          { value: 'Degraded', label: 'Degraded' },
-          { value: 'Offline', label: 'Offline' },
-        ],
+        options: [{ value: 'ALL', label: 'All Statuses' }, ...CAMERA_STATUSES.map((s) => ({ value: s, label: s }))],
       },
     ],
     []
@@ -334,7 +311,7 @@ function CameraRegistry() {
           label="Departments"
           value={stats.totalDepartments}
           statusAccent="blue"
-          subtext="Police, Municipal, Transport, Edu, Health"
+          subtext="Police, Health, GSRTC, Panchayat, Municipal, RTO..."
           icon={
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
@@ -400,16 +377,17 @@ function CameraRegistry() {
       {/* 3. DataTable of CCTV Assets */}
       <DataTable
         title="Asset Inventory"
-        subtitle={`Showing ${cameras.length} verified surveillance camera nodes`}
+        subtitle={loading ? 'Loading registry…' : `Showing ${cameras.length} registered camera nodes`}
         columns={columns}
         rows={cameras}
         rowKey="camera_uid"
         searchable={true}
-        searchPlaceholder="Search by ID, location, department, or camera type..."
+        searchPlaceholder="Search by ID, location, department, or protocol..."
         filters={filters}
         pagination={true}
         pageSize={10}
         pageSizeOptions={[5, 10, 25, 50]}
+        emptyMessage={loading ? 'Loading registry…' : 'No cameras registered yet.'}
         onRowClick={(row) => {
           setSelectedCamera(row);
           setActiveTab('Details');
@@ -485,19 +463,10 @@ function CameraRegistry() {
 
             {/* Modal Body Content */}
             <div className="modal-body">
-              {/* Tab 1: Details */}
+              {/* Tab 1: Details -- only fields the real backend actually stores
+                  (server/schemas/camera.py). No fabricated hardware/warranty specs. */}
               {activeTab === 'Details' && (
                 <div className="detail-meta-grid">
-                  <div className="detail-meta-item">
-                    <span className="detail-meta-label">Camera Type</span>
-                    <span className="detail-meta-value">{selectedCamera.type || 'PTZ Dome 36x'}</span>
-                  </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-meta-label">Resolution & Framerate</span>
-                    <span className="detail-meta-value">
-                      {selectedCamera.resolution} @ {selectedCamera.fps || 30} FPS
-                    </span>
-                  </div>
                   <div className="detail-meta-item">
                     <span className="detail-meta-label">Department</span>
                     <span className="detail-meta-value">{selectedCamera.department}</span>
@@ -508,24 +477,30 @@ function CameraRegistry() {
                   </div>
                   <div className="detail-meta-item">
                     <span className="detail-meta-label">Protocol</span>
+                    <span className="detail-meta-value">{selectedCamera.protocol_type}</span>
+                  </div>
+                  <div className="detail-meta-item">
+                    <span className="detail-meta-label">AI Enabled</span>
+                    <span className="detail-meta-value">{selectedCamera.ai_enabled ? 'Yes' : 'No'}</span>
+                  </div>
+                  <div className="detail-meta-item">
+                    <span className="detail-meta-label">AI Profile</span>
+                    <span className="detail-meta-value">{selectedCamera.ai_profile || 'TRAFFIC'}</span>
+                  </div>
+                  <div className="detail-meta-item">
+                    <span className="detail-meta-label">Onboarding Source</span>
+                    <span className="detail-meta-value">{selectedCamera.onboarding_source || 'MANUAL'}</span>
+                  </div>
+                  <div className="detail-meta-item">
+                    <span className="detail-meta-label">Registered</span>
                     <span className="detail-meta-value">
-                      {selectedCamera.protocol_type} (Pipeline 2 Normalized)
+                      {selectedCamera.created_at ? new Date(selectedCamera.created_at).toLocaleString('en-GB') : '—'}
                     </span>
                   </div>
                   <div className="detail-meta-item">
-                    <span className="detail-meta-label">Power Source</span>
+                    <span className="detail-meta-label">Last Updated</span>
                     <span className="detail-meta-value">
-                      {selectedCamera.power_source || 'PoE+ (IEEE 802.3at)'}
-                    </span>
-                  </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-meta-label">Installation Date</span>
-                    <span className="detail-meta-value">{selectedCamera.installed_on}</span>
-                  </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-meta-label">Warranty & AMC</span>
-                    <span className="detail-meta-value">
-                      {selectedCamera.warranty_status || 'Active (3-Year AMC)'}
+                      {selectedCamera.updated_at ? new Date(selectedCamera.updated_at).toLocaleString('en-GB') : '—'}
                     </span>
                   </div>
                 </div>
@@ -568,86 +543,43 @@ function CameraRegistry() {
                       </span>
                     </div>
                     <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569' }}>
-                      Mounted on Heavy-Duty Galvanized Steel Pole (8.5m AGL). Azimuth coverage: 360° continuous rotation with 45° vertical tilt angle. Directly indexed into the Gujarat Police GIS Matrix.
+                      GPS coordinates as registered in the camera record. No fixed installation/mounting
+                      metadata (pole height, azimuth) is tracked by the backend.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Tab 3: Maintenance */}
+              {/* Tab 3: Maintenance -- the backend does not track uptime history, service
+                  records, or firmware yet (docs/backend.md's checklist has no such
+                  endpoint). Real status only; everything else was fabricated before. */}
               {activeTab === 'Maintenance' && (
                 <div className="detail-meta-grid">
                   <div className="detail-meta-item">
-                    <span className="detail-meta-label">Operational Health</span>
+                    <span className="detail-meta-label">Operational Status</span>
                     <div style={{ marginTop: 4 }}>
                       <StatusBadge status={selectedCamera.status} size="sm" />
                     </div>
                   </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-meta-label">90-Day Uptime</span>
-                    <span className="detail-meta-value" style={{ color: '#16a34a' }}>
-                      {selectedCamera.maintenance?.uptime_pct || '99.8%'}
-                    </span>
-                  </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-meta-label">Last Serviced</span>
-                    <span className="detail-meta-value">
-                      {selectedCamera.maintenance?.last_serviced || '14 Aug 2026'}
-                    </span>
-                  </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-meta-label">Next Scheduled Inspection</span>
-                    <span className="detail-meta-value">
-                      {selectedCamera.maintenance?.next_scheduled || '14 Nov 2026'}
-                    </span>
-                  </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-meta-label">Authorized Contractor</span>
-                    <span className="detail-meta-value">
-                      {selectedCamera.maintenance?.contractor || 'Gujarat Infotech Ltd'}
-                    </span>
-                  </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-meta-label">Installed Firmware</span>
-                    <span className="detail-meta-value" style={{ fontFamily: 'monospace' }}>
-                      {selectedCamera.maintenance?.firmware || 'v4.12.8-p3'}
+                  <div className="detail-meta-item" style={{ gridColumn: '1 / -1' }}>
+                    <span className="detail-meta-label">Maintenance tracking</span>
+                    <span className="detail-meta-value" style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                      Not yet tracked by the backend -- uptime history, service records, and firmware
+                      versioning aren't part of the camera registry API yet.
                     </span>
                   </div>
                 </div>
               )}
 
-              {/* Tab 4: History */}
+              {/* Tab 4: History -- same reasoning as Maintenance above: no per-camera
+                  audit trail endpoint exists yet, so there's nothing real to show. */}
               {activeTab === 'History' && (
                 <div className="history-timeline">
-                  {(selectedCamera.history && selectedCamera.history.length > 0
-                    ? selectedCamera.history
-                    : [
-                        {
-                          date: '2026-09-12 14:32',
-                          event: 'Protocol heartbeat and RTSP 200 OK verified',
-                          author: 'Pipeline 2 Health Check',
-                        },
-                        {
-                          date: '2026-08-14 11:15',
-                          event: 'Quarterly field inspection and optical lens cleaning',
-                          author: 'Field Technician #42',
-                        },
-                        {
-                          date: '2025-01-12 10:00',
-                          event: 'Initial commissioning and GIS geofence integration',
-                          author: 'State Deployment Team',
-                        },
-                      ]
-                  ).map((ev, idx) => (
-                    <div key={idx} className="timeline-event-item">
-                      <div className="timeline-event-dot" />
-                      <div className="timeline-event-header">
-                        <span className="timeline-event-date">{ev.date}</span>
-                        <span className="timeline-event-author">{ev.author}</span>
-                      </div>
-                      <p className="timeline-event-title">{ev.event}</p>
-                    </div>
-                  ))}
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                    No activity history is tracked for individual cameras yet. The platform's audit log
+                    (Administration, once built) records who registered/edited a camera, but doesn't yet
+                    surface a per-camera timeline here.
+                  </p>
                 </div>
               )}
             </div>
@@ -725,19 +657,26 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group">
+                    <label className="form-label">Camera UID</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Auto-generated if left blank"
+                      value={newCameraForm.camera_uid}
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, camera_uid: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-group">
                     <label className="form-label">Department *</label>
                     <select
                       className="form-select"
                       value={newCameraForm.department}
-                      onChange={(e) =>
-                        setNewCameraForm({ ...newCameraForm, department: e.target.value })
-                      }
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, department: e.target.value })}
                     >
-                      <option value="Police">Police</option>
-                      <option value="Municipal Corporation">Municipal Corporation</option>
-                      <option value="Transport">Transport</option>
-                      <option value="Education">Education</option>
-                      <option value="Health">Health</option>
+                      {DEPARTMENTS.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -746,18 +685,11 @@ function CameraRegistry() {
                     <select
                       className="form-select"
                       value={newCameraForm.district}
-                      onChange={(e) =>
-                        setNewCameraForm({ ...newCameraForm, district: e.target.value })
-                      }
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, district: e.target.value })}
                     >
-                      <option value="Ahmedabad">Ahmedabad</option>
-                      <option value="Surat">Surat</option>
-                      <option value="Vadodara">Vadodara</option>
-                      <option value="Gandhinagar">Gandhinagar</option>
-                      <option value="Rajkot">Rajkot</option>
-                      <option value="Bhavnagar">Bhavnagar</option>
-                      <option value="Jamnagar">Jamnagar</option>
-                      <option value="Kutch">Kutch</option>
+                      {DISTRICTS.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -768,71 +700,70 @@ function CameraRegistry() {
                       className="form-input"
                       placeholder="e.g. Near Amphitheater Gate 3, Vastrapur"
                       value={newCameraForm.location}
-                      onChange={(e) =>
-                        setNewCameraForm({ ...newCameraForm, location: e.target.value })
-                      }
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, location: e.target.value })}
                       required
                     />
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Camera Type</label>
-                    <select
-                      className="form-select"
-                      value={newCameraForm.type}
-                      onChange={(e) =>
-                        setNewCameraForm({ ...newCameraForm, type: e.target.value })
-                      }
-                    >
-                      <option value="PTZ Dome">PTZ Dome</option>
-                      <option value="Bullet Fixed">Bullet Fixed</option>
-                      <option value="ANPR High-Speed">ANPR High-Speed</option>
-                      <option value="Fisheye 360°">Fisheye 360°</option>
-                      <option value="Box Thermal">Box Thermal</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Stream Resolution</label>
-                    <select
-                      className="form-select"
-                      value={newCameraForm.resolution}
-                      onChange={(e) =>
-                        setNewCameraForm({ ...newCameraForm, resolution: e.target.value })
-                      }
-                    >
-                      <option value="4K (3840x2160)">4K Ultra HD (3840x2160)</option>
-                      <option value="1080p (1920x1080)">1080p Full HD (1920x1080)</option>
-                      <option value="720p (1280x720)">720p HD (1280x720)</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Hardware Vendor</label>
+                    <label className="form-label">Hardware Vendor *</label>
                     <input
                       type="text"
                       className="form-input"
                       placeholder="e.g. Axis Communications"
                       value={newCameraForm.vms_vendor}
-                      onChange={(e) =>
-                        setNewCameraForm({ ...newCameraForm, vms_vendor: e.target.value })
-                      }
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, vms_vendor: e.target.value })}
+                      required
                     />
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Protocol Ingest</label>
+                    <label className="form-label">Protocol *</label>
                     <select
                       className="form-select"
                       value={newCameraForm.protocol_type}
-                      onChange={(e) =>
-                        setNewCameraForm({ ...newCameraForm, protocol_type: e.target.value })
-                      }
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, protocol_type: e.target.value })}
                     >
-                      <option value="RTSP">RTSP (Real-Time Streaming Protocol)</option>
-                      <option value="ONVIF">ONVIF Profile S/G</option>
-                      <option value="HLS">HLS (HTTP Live Streaming)</option>
+                      {PROTOCOL_TYPES.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
                     </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Status *</label>
+                    <select
+                      className="form-select"
+                      value={newCameraForm.status}
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, status: e.target.value })}
+                    >
+                      {CAMERA_STATUSES.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">AI Profile</label>
+                    <select
+                      className="form-select"
+                      value={newCameraForm.ai_profile}
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, ai_profile: e.target.value })}
+                    >
+                      {AI_PROFILES.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      id="ai-enabled-checkbox"
+                      checked={newCameraForm.ai_enabled}
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, ai_enabled: e.target.checked })}
+                    />
+                    <label className="form-label" htmlFor="ai-enabled-checkbox" style={{ margin: 0 }}>AI analytics enabled</label>
                   </div>
 
                   <div className="form-group">
@@ -842,9 +773,7 @@ function CameraRegistry() {
                       step="0.0001"
                       className="form-input"
                       value={newCameraForm.latitude}
-                      onChange={(e) =>
-                        setNewCameraForm({ ...newCameraForm, latitude: e.target.value })
-                      }
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, latitude: e.target.value })}
                     />
                   </div>
 
@@ -855,12 +784,11 @@ function CameraRegistry() {
                       step="0.0001"
                       className="form-input"
                       value={newCameraForm.longitude}
-                      onChange={(e) =>
-                        setNewCameraForm({ ...newCameraForm, longitude: e.target.value })
-                      }
+                      onChange={(e) => setNewCameraForm({ ...newCameraForm, longitude: e.target.value })}
                     />
                   </div>
                 </div>
+                {formError && <p style={{ color: '#c62828', fontSize: '0.8rem', margin: '10px 24px 0' }}>{formError}</p>}
               </div>
 
               <div className="modal-footer">
@@ -871,8 +799,8 @@ function CameraRegistry() {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary-add">
-                  Register Asset
+                <button type="submit" className="btn-primary-add" disabled={submitting}>
+                  {submitting ? 'Registering…' : 'Register Asset'}
                 </button>
               </div>
             </form>

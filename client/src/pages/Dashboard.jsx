@@ -1,9 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import CameraMap from '../components/CameraMap';
 import TelemetryTicker from '../components/TelemetryTicker';
 import { DEPARTMENT_COLORS } from '../data/cameras';
+import api from '../api/client';
 import './Dashboard.css';
+
+// docs/frontend.md flags CameraMap.jsx as a known remaining gap: it's a large
+// (1300+ line), self-contained component reading its own hardcoded fake camera data
+// (data/cameras.js), not wired to the API client. Fixing that is out of scope for
+// this pass -- rewiring it safely needs its own dedicated pass, not a rushed change
+// inside a Dashboard edit. Everything else on this page below (stat cards, the
+// department donut, the priority strip, the ticker) is now real.
 
 // ============================================================================
 // Custom Hooks
@@ -205,18 +213,26 @@ function StatCard({
           {scrambledValue}
           {suffix}
         </span>
-        <span className={`trend-badge ${isPositive ? 'positive' : 'negative'}`}>
-          <span className="trend-arrow">{isPositive ? '↑' : '↓'}</span>
-          {trendText}
-        </span>
+        {trendText && (
+          <span className={`trend-badge ${isPositive ? 'positive' : 'negative'}`}>
+            <span className="trend-arrow">{isPositive ? '↑' : '↓'}</span>
+            {trendText}
+          </span>
+        )}
       </div>
 
-      <Sparkline data={sparkData} strokeColor={accentColor} id={id} />
-
-      <div className="sparkline-footer">
-        <span>7-day activity</span>
-        <span>Current period</span>
-      </div>
+      {/* No real historical time-series endpoint exists yet (docs/frontend.md) --
+          only render a trend line when real per-period data is actually supplied,
+          rather than fabricating a plausible-looking 7-day curve from nothing. */}
+      {sparkData && sparkData.length > 1 && (
+        <>
+          <Sparkline data={sparkData} strokeColor={accentColor} id={id} />
+          <div className="sparkline-footer">
+            <span>Recent activity</span>
+            <span>Current period</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -225,21 +241,36 @@ function StatCard({
 // Department Activity Donut Widget with Synchronous Radar Sweep
 // ============================================================================
 
-const departmentData = [
-  { name: 'Police / Security', pct: 28, count: 516, color: DEPARTMENT_COLORS.Police },
-  { name: 'Municipal Affairs', pct: 24, count: 442, color: DEPARTMENT_COLORS.Municipal },
-  { name: 'Food Safety', pct: 18, count: 331, color: DEPARTMENT_COLORS.Food },
-  { name: 'Traffic Control', pct: 16, count: 294, color: DEPARTMENT_COLORS.Traffic },
-  { name: 'Sanitation', pct: 8, count: 147, color: DEPARTMENT_COLORS.Sanitation },
-  { name: 'Health Services', pct: 6, count: 110, color: DEPARTMENT_COLORS.Health },
-];
+const FALLBACK_DEPT_COLORS = ['#0284c7', '#6366f1', '#d97706', '#0d9488', '#dc2626', '#7c3aed', '#059669'];
 
-const DepartmentDonut = React.memo(function DepartmentDonut() {
+/** Real department distribution derived from registered cameras (api.getCameras()) --
+ * this used to be a fixed array of invented department names/counts/percentages that
+ * never changed regardless of what was actually in the registry. */
+function deriveDepartmentData(cameras) {
+  const counts = {};
+  cameras.forEach((c) => {
+    const dept = c.department || 'Unknown';
+    counts[dept] = (counts[dept] || 0) + 1;
+  });
+  const total = cameras.length || 1;
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count], idx) => ({
+      name,
+      count,
+      pct: Math.round((count / total) * 1000) / 10,
+      color: DEPARTMENT_COLORS[name] || FALLBACK_DEPT_COLORS[idx % FALLBACK_DEPT_COLORS.length],
+    }));
+}
+
+const DepartmentDonut = React.memo(function DepartmentDonut({ cameras }) {
   const radius = 70;
   const circumference = 2 * Math.PI * radius; // ~439.82
 
   const [animationComplete, setAnimationComplete] = useState(false);
   const [hoveredDept, setHoveredDept] = useState(null);
+
+  const departmentData = useMemo(() => deriveDepartmentData(cameras), [cameras]);
 
   // Step D concludes at ~2.9s (1.4s start + 1.5s spin duration)
   useEffect(() => {
@@ -249,8 +280,8 @@ const DepartmentDonut = React.memo(function DepartmentDonut() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Center count-up triggers after radar spin settles
-  const totalCount = useCountUp(animationComplete ? 1840 : 0, 900);
+  // Center count-up now targets the real registered-camera count, not a fixed 1840.
+  const totalCount = useCountUp(animationComplete ? cameras.length : 0, 900);
 
   let accumulatedPct = 0;
 
@@ -258,12 +289,26 @@ const DepartmentDonut = React.memo(function DepartmentDonut() {
     ? departmentData.find((d) => d.name === hoveredDept)
     : null;
 
+  if (departmentData.length === 0) {
+    return (
+      <div className="widget-card">
+        <div className="widget-header">
+          <div className="widget-title-group">
+            <h2 className="widget-title">Department Activity</h2>
+            <p className="widget-subtitle">Camera distribution by owning department</p>
+          </div>
+        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No cameras registered yet.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="widget-card">
       <div className="widget-header">
         <div className="widget-title-group">
           <h2 className="widget-title">Department Activity</h2>
-          <p className="widget-subtitle">Multi-agency incident distribution</p>
+          <p className="widget-subtitle">Camera distribution by owning department</p>
         </div>
         <span className="widget-action-pill">Live Ratio</span>
       </div>
@@ -392,8 +437,31 @@ const DepartmentDonut = React.memo(function DepartmentDonut() {
 // Command Center Priority Strip
 // ============================================================================
 
-function CommandPriorityStrip() {
-  const [acknowledged, setAcknowledged] = useState(false);
+/** The single highest-priority unresolved alert, real (api.getAlerts()) -- this used
+ * to be a hardcoded "GJ05X7821" incident that showed regardless of actual alert
+ * state, including with zero real alerts. */
+function CommandPriorityStrip({ alerts, onAcknowledge }) {
+  const severityRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
+  const topAlert = [...alerts]
+    .filter((a) => a.status !== 'RESOLVED')
+    .sort((a, b) => (severityRank[a.severity] ?? 9) - (severityRank[b.severity] ?? 9))[0];
+
+  if (!topAlert) {
+    return (
+      <section className="command-priority-strip" aria-label="Command priority summary">
+        <div className="priority-alert-block">
+          <div>
+            <span className="priority-kicker">Priority response</span>
+            <strong>No active incidents</strong>
+            <small>All alerts resolved or none raised yet</small>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const acknowledged = topAlert.status === 'ACKNOWLEDGED' || topAlert.status === 'ESCALATED';
+  const minutesAgo = topAlert.created_at ? Math.max(0, Math.round((Date.now() - new Date(topAlert.created_at).getTime()) / 60000)) : null;
 
   return (
     <section className="command-priority-strip" aria-label="Command priority summary">
@@ -401,13 +469,26 @@ function CommandPriorityStrip() {
         <span className="priority-alert-icon">!</span>
         <div>
           <span className="priority-kicker">Priority response</span>
-          <strong>GJ05X7821 · Vehicle match detected</strong>
-          <small>Surat Ring Road · 98.7% AI confidence · 2 min ago</small>
+          <strong>{topAlert.entity} · {topAlert.type?.replace(/_/g, ' ')}</strong>
+          <small>
+            {topAlert.camera_name || topAlert.camera_uid} · {(topAlert.confidence * 100).toFixed(1)}% confidence
+            {minutesAgo !== null ? ` · ${minutesAgo} min ago` : ''}
+          </small>
         </div>
       </div>
-      <div className="priority-metric"><span>Nearest patrol</span><strong>PSI Rakesh Solanki</strong><small><i /> 4 min ETA · PAT-SRT-0042</small></div>
-      <div className="priority-metric"><span>Response state</span><strong className={acknowledged ? 'state-acknowledged' : 'state-pending'}>{acknowledged ? 'Acknowledged' : 'Needs review'}</strong><small>Officer confirmation required</small></div>
-      <div className="priority-actions"><button type="button" className={`priority-acknowledge ${acknowledged ? 'done' : ''}`} onClick={() => setAcknowledged((value) => !value)}>{acknowledged ? '✓ Acknowledged' : 'Acknowledge'}</button><Link to="/investigation" className="priority-open">Open incident <span>→</span></Link></div>
+      <div className="priority-metric"><span>Severity</span><strong>{topAlert.severity}</strong><small>{topAlert.district}</small></div>
+      <div className="priority-metric"><span>Response state</span><strong className={acknowledged ? 'state-acknowledged' : 'state-pending'}>{acknowledged ? topAlert.status : 'Needs review'}</strong><small>Officer confirmation required</small></div>
+      <div className="priority-actions">
+        <button
+          type="button"
+          className={`priority-acknowledge ${acknowledged ? 'done' : ''}`}
+          disabled={acknowledged}
+          onClick={() => onAcknowledge(topAlert.alert_uid)}
+        >
+          {acknowledged ? '✓ Acknowledged' : 'Acknowledge'}
+        </button>
+        <Link to="/investigation" className="priority-open">Open incident <span>→</span></Link>
+      </div>
     </section>
   );
 }
@@ -418,6 +499,39 @@ function CommandPriorityStrip() {
 
 function Dashboard() {
   const clock = useLiveClock();
+  const [cameras, setCameras] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [liveEventCount, setLiveEventCount] = useState(0);
+  const [backendMode, setBackendMode] = useState('MOCK_ENGINE');
+
+  const loadAlerts = () => {
+    api.getAlerts().then((data) => setAlerts(Array.isArray(data) ? data : []));
+  };
+
+  useEffect(() => {
+    api.getCameras().then((data) => setCameras(Array.isArray(data) ? data : []));
+    loadAlerts();
+    api.checkBackendAvailability().then(() => setBackendMode(api.getMode()));
+
+    // Real, live-updating count of AI events received this session -- there is no
+    // "detections today" endpoint on the backend (server/routers/ai.py is per-frame
+    // analyze-frame only), so this counts actual SSE messages since page load rather
+    // than fabricating a daily total. Labeled accordingly below, not as "Today".
+    const source = api.subscribeToLiveEvents(
+      () => setLiveEventCount((n) => n + 1),
+      () => source.close()
+    );
+    return () => source.close();
+  }, []);
+
+  const handleAcknowledge = async (alertUid) => {
+    await api.updateAlertStatus(alertUid, 'ACKNOWLEDGED');
+    loadAlerts();
+  };
+
+  const onlineCount = cameras.filter((c) => c.status === 'ACTIVE').length;
+  const onlinePct = cameras.length > 0 ? ((onlineCount / cameras.length) * 100).toFixed(1) : '0.0';
+  const activeIncidents = alerts.filter((a) => a.status !== 'RESOLVED').length;
 
   const formattedDate = clock.toLocaleDateString(undefined, {
     weekday: 'short',
@@ -446,7 +560,7 @@ function Dashboard() {
             <span className="hero-badge">Enterprise VMS</span>
           </div>
           <p className="hero-desc">
-            Unified telemetry stream, live GIS surveillance coverage, and real-time AI incident detection across Ahmedabad.
+            Unified telemetry stream, live GIS surveillance coverage, and real-time AI incident detection.
           </p>
         </div>
 
@@ -454,7 +568,7 @@ function Dashboard() {
           <div className="live-clock-card">
             <div className="live-status-indicator">
               <span className="pulse-dot" />
-              <span>System Live</span>
+              <span>{backendMode === 'LIVE_BACKEND' ? 'Live backend' : 'Demo mode'}</span>
             </div>
             <div className="live-time">{formattedTime}</div>
             <div className="live-date">{formattedDate}</div>
@@ -463,15 +577,15 @@ function Dashboard() {
       </section>
 
       {/* 3. Ambient Live Telemetry Ticker Strip */}
-      <TelemetryTicker />
+      <TelemetryTicker cameras={cameras} alerts={alerts} backendMode={backendMode} />
 
       {/* 3.5 Operator-first triage before aggregate metrics */}
-      <CommandPriorityStrip />
+      <CommandPriorityStrip alerts={alerts} onAcknowledge={handleAcknowledge} />
 
       {/* 4. Map-first operational view */}
       <section className="widgets-row dashboard-map-first">
         <CameraMap />
-        <DepartmentDonut />
+        <DepartmentDonut cameras={cameras} />
       </section>
 
       {/* 5. Aggregate metrics after the operational map */}
@@ -480,11 +594,10 @@ function Dashboard() {
           cardIndex={0}
           id="cams"
           label="Active Camera Feeds"
-          targetValue={1428}
-          trendText="+12% this week"
+          targetValue={onlineCount}
+          trendText={cameras.length > 0 ? `of ${cameras.length} registered` : undefined}
           isPositive={true}
           accentColor="#0284c7"
-          sparkData={[1280, 1310, 1340, 1375, 1395, 1412, 1428]}
           icon={
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M23 7l-7 5 7 5V7z" />
@@ -496,12 +609,10 @@ function Dashboard() {
         <StatCard
           cardIndex={1}
           id="detections"
-          label="AI Detections Today"
-          targetValue={8742}
-          trendText="+18% this week"
+          label="Live AI Events (this session)"
+          targetValue={liveEventCount}
           isPositive={true}
           accentColor="#6366f1"
-          sparkData={[6900, 7250, 7600, 7920, 8200, 8510, 8742]}
           icon={
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3" />
@@ -514,11 +625,9 @@ function Dashboard() {
           cardIndex={2}
           id="alerts"
           label="Active Incidents"
-          targetValue={27}
-          trendText="-8% response"
-          isPositive={true}
+          targetValue={activeIncidents}
+          isPositive={activeIncidents === 0}
           accentColor="#d97706"
-          sparkData={[42, 38, 35, 33, 30, 29, 27]}
           icon={
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2" />
@@ -531,14 +640,12 @@ function Dashboard() {
         <StatCard
           cardIndex={3}
           id="uptime"
-          label="Stream SLA Stability"
-          targetValue={99.94}
+          label="Cameras Online"
+          targetValue={Number(onlinePct)}
           isDecimal={true}
           suffix="%"
-          trendText="+0.05% uptime"
           isPositive={true}
           accentColor="#0d9488"
-          sparkData={[99.85, 99.87, 99.90, 99.91, 99.92, 99.93, 99.94]}
           icon={
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
