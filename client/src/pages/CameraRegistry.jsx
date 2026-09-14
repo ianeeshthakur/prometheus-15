@@ -347,7 +347,6 @@ function CameraRegistry() {
           value={stats.operationalPct}
           suffix="%"
           statusAccent="green"
-          trendText="+2.4% vs last month"
           isPositive={true}
           subtext={`${stats.operationalCount} nodes online & streaming`}
           icon={
@@ -362,9 +361,8 @@ function CameraRegistry() {
           value={stats.offlinePct}
           suffix="%"
           statusAccent="red"
-          trendText={`${stats.offlineCount} nodes under triage`}
           isPositive={false}
-          subtext="Maintenance tickets active"
+          subtext={`${stats.offlineCount} nodes offline`}
           icon={
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />

@@ -45,7 +45,16 @@ INGEST_STREAM_PASSWORD = os.environ.get("INGEST_STREAM_PASSWORD", "")
 INGEST_RTSP_HOST = os.environ.get("INGEST_RTSP_HOST", "")
 INGEST_RTSP_PORT = os.environ.get("INGEST_RTSP_PORT", "8554")
 
-CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+# Default covers client/'s real dev server (Vite, port 5173, docs/frontend.md §1).
+# Caught for real 2026-09-14: this defaulted to port 3000 only (the old Next.js dev
+# port, contrib/nextjs-frontend-archive/) from before the client swap -- nobody
+# updated it, so every /api/* call from the actual current client silently failed
+# CORS preflight and the app fell back to mock mode, indistinguishable at a glance
+# from "backend not running". 3000 kept for anyone still running the archived app.
+CORS_ORIGINS = os.environ.get(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000",
+).split(",")
 
 # Auth (docs/backend.md §7/§12.4). SECRET_KEY MUST be overridden via env before any real
 # deployment -- this default is fine for local dev only and is deliberately obvious so

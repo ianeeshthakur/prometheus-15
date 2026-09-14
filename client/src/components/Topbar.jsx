@@ -75,7 +75,7 @@ function Topbar() {
             (backend/routers/auth.py's /me), a generic DEMO placeholder otherwise --
             never a hardcoded fake name presented as if it were a real signed-in user. */}
         <div className="officer-badge">
-          <div className="officer-avatar">
+          <div className="topbar-avatar">
             {currentUser ? (currentUser.full_name || currentUser.username).slice(0, 2).toUpperCase() : 'DM'}
           </div>
           <div className="officer-info">

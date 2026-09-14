@@ -62,7 +62,12 @@
   border: 1px solid var(--border-color);
 }
 
-.officer-avatar {
+/* Named topbar-avatar, not officer-avatar -- caught by actually running the app:
+   LoginScreen.css already defines a global .officer-avatar (82px, its own post-login
+   card) that was silently winning the cascade here since this app has no CSS
+   scoping, blowing this badge up to 82px and overlapping the accessibility bar
+   above it. */
+.topbar-avatar {
   width: 32px;
   height: 32px;
   border-radius: 50%;
