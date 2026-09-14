@@ -18,6 +18,7 @@ python-multipart>=0.0.9
 opencv-python-headless
 numpy
 requests>=2.31.0
+ultralytics
 
 # Added for docs/backend.md §12.4 (auth/RBAC + pytest conversion).
 # NOTE: use `bcrypt` directly, not passlib -- passlib 1.7.4 (unmaintained since 2020)
