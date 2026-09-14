@@ -4,7 +4,31 @@
   --bg-secondary: #f8fafc;
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --accent: #0284c7;
+  /* Darkened from the original #0284c7 (client/scripts/contrast-audit.mjs found it
+     4.10:1 with white text, failing AA -- and it's used with white text on dozens of
+     buttons/tabs/chips throughout the app, all at normal-not-large text sizes, so this
+     wasn't one spot to patch). #0278b5 is 4.82:1 with white text, passing AA everywhere
+     the original value was already in use, with no per-component hunting needed.
+     --accent-text is the same value under a second name for call sites that reach for
+     "the text-safe accent color" specifically (e.g. active-tab text on a light
+     background) -- kept distinct from --accent in naming, not in value, so intent stays
+     readable at the call site even though there's currently one real color behind both. */
+  --accent: #0278b5;
+  --accent-text: #0278b5;
   --border-color: #e2e8f0;
   --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+
+  /* Semantic status tokens -- mirror StatusBadge.css's five variants (already real,
+     already contrast-audited) so other components can reuse the same colors via tokens
+     instead of re-guessing a shade of green/red/amber ad hoc. */
+  --status-success: #15803d;
+  --status-success-bg: rgba(22, 163, 74, 0.09);
+  --status-warning: #b45309;
+  --status-warning-bg: rgba(217, 119, 6, 0.1);
+  --status-danger: #b91c1c;
+  --status-danger-bg: rgba(220, 38, 38, 0.09);
+  --status-info: #0369a1;
+  --status-info-bg: rgba(2, 132, 199, 0.09);
+  --status-neutral: #475569;
+  --status-neutral-bg: rgba(100, 116, 139, 0.1);
 }

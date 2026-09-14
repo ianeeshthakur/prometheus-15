@@ -9,8 +9,14 @@
 .app-body {
   display: flex;
   flex: 1;
-  height: calc(100vh - 60px);
+  min-height: 0;
   overflow: hidden;
+}
+
+.route-loading {
+  padding: 32px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
 }
 
 .page-content {

@@ -114,29 +114,35 @@ const navItems = [
   },
 ];
 
-function Sidebar() {
+function Sidebar({ open = false, onClose = () => {} }) {
   const { t } = useLanguage();
   return (
-    <aside className="sidebar">
-      <nav className="sidebar-nav">
-        <ul className="sidebar-menu">
-          {navItems.map((item) => (
-            <li key={item.path} className="sidebar-item">
-              <NavLink
-                to={item.path}
-                end={item.path === '/'}
-                className={({ isActive }) =>
-                  `sidebar-link ${isActive ? 'active' : ''}`
-                }
-              >
-                <span className="sidebar-icon">{item.icon}</span>
-                <span className="sidebar-text">{t(item.labelKey)}</span>
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
-    </aside>
+    <>
+      {/* Below 880px (Sidebar.css) this becomes a real off-canvas overlay -- `open`/
+          `onClose` are only meaningful there; on desktop widths the sidebar is always
+          visible in-flow and this backdrop stays hidden. */}
+      {open && <div className="sidebar-backdrop" onClick={onClose} aria-hidden="true" />}
+      <aside className={`sidebar ${open ? 'open' : ''}`}>
+        <nav className="sidebar-nav">
+          <ul className="sidebar-menu">
+            {navItems.map((item) => (
+              <li key={item.path} className="sidebar-item">
+                <NavLink
+                  to={item.path}
+                  end={item.path === '/'}
+                  className={({ isActive }) =>
+                    `sidebar-link ${isActive ? 'active' : ''}`
+                  }
+                >
+                  <span className="sidebar-icon">{item.icon}</span>
+                  <span className="sidebar-text">{t(item.labelKey)}</span>
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </aside>
+    </>
   );
 }
 

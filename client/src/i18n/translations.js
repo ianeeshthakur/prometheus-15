@@ -56,6 +56,9 @@ export const translations = {
     common_cancel: 'Cancel',
     common_search: 'Search',
     common_loading: 'Loading…',
+
+    footer_live: 'LIVE — connected to the real backend',
+    footer_mock: 'DEMO — mock data, backend unreachable',
   },
 
   hi: {
@@ -101,6 +104,9 @@ export const translations = {
     common_cancel: 'रद्द करें',
     common_search: 'खोजें',
     common_loading: 'लोड हो रहा है…',
+
+    footer_live: 'लाइव — वास्तविक बैकएंड से जुड़ा हुआ',
+    footer_mock: 'डेमो — मॉक डेटा, बैकएंड अनुपलब्ध',
   },
 
   gu: {
@@ -146,5 +152,8 @@ export const translations = {
     common_cancel: 'રદ કરો',
     common_search: 'શોધો',
     common_loading: 'લોડ થઈ રહ્યું છે…',
+
+    footer_live: 'લાઇવ — વાસ્તવિક બેકએન્ડ સાથે જોડાયેલ',
+    footer_mock: 'ડેમો — મોક ડેટા, બેકએન્ડ અનુપલબ્ધ',
   },
 };

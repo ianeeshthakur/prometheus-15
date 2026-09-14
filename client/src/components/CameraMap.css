@@ -72,7 +72,7 @@
 
 .fullscreen-active-badge {
   background-color: rgba(2, 132, 199, 0.12);
-  color: var(--accent);
+  color: var(--accent-text);
   border: 1px solid rgba(2, 132, 199, 0.25);
   font-size: 0.68rem;
   font-weight: 700;
@@ -147,9 +147,12 @@
 }
 
 .filter-chip.active {
-  background-color: var(--accent);
+  /* white text at 0.73rem on --accent was 4.10:1, failing AA -- axe-core found this.
+     --accent-text (4.82:1) passes; kept as the border/hover accent elsewhere since
+     border-color contrast isn't a WCAG text requirement. */
+  background-color: var(--accent-text);
   color: #ffffff;
-  border-color: var(--accent);
+  border-color: var(--accent-text);
 }
 
 /* Expand / Close Action Button */
@@ -175,9 +178,9 @@
 }
 
 .map-expand-btn:hover {
-  background-color: var(--accent);
+  background-color: var(--accent-text);
   color: #ffffff;
-  border-color: var(--accent);
+  border-color: var(--accent-text);
 }
 
 .map-expand-btn.active-fullscreen {
@@ -208,7 +211,7 @@
   align-items: center;
   justify-content: center;
   font-size: 0.68rem;
-  color: var(--accent);
+  color: var(--accent-text);
   background-color: rgba(2, 132, 199, 0.08);
   border: 1px dashed rgba(2, 132, 199, 0.25);
   border-radius: 4px;

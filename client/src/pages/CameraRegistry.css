@@ -45,7 +45,9 @@
 
 .registry-pipeline-badge {
   background-color: rgba(2, 132, 199, 0.08);
-  color: var(--accent, #0284c7);
+  /* var(--accent) was 4.36:1 on this specific tinted bg, just under AA -- axe-core
+     found it. --status-info (theme.css) is 5.36:1 on the same background. */
+  color: var(--status-info);
   border: 1px solid rgba(2, 132, 199, 0.22);
   font-size: 0.68rem;
   font-weight: 700;

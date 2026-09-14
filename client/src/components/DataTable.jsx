@@ -225,7 +225,11 @@ function DataTable({
           <div className="data-table-toolbar-left">
             {title && (
               <div className="data-table-title-group">
-                <h3 className="data-table-title">{title}</h3>
+                {/* h2, not h3: DataTable always sits directly under a page's h1 in both
+                    call sites (CameraRegistry.jsx, Watchlists.jsx) -- h3 here skipped a
+                    level (h1 -> h3), a real WCAG 1.3.1 heading-order violation axe-core
+                    found. Class name kept as data-table-title (styling, not semantics). */}
+                <h2 className="data-table-title">{title}</h2>
                 {subtitle && <p className="data-table-subtitle">{subtitle}</p>}
               </div>
             )}
@@ -277,6 +281,7 @@ function DataTable({
                   className="data-table-filter-select"
                   value={activeFilters[f.key] || 'ALL'}
                   onChange={(e) => handleFilterChange(f.key, e.target.value)}
+                  aria-label={f.label ? `Filter by ${f.label}` : 'Filter'}
                 >
                   {f.options.map((opt) => {
                     const val = typeof opt === 'object' ? opt.value : opt;
@@ -411,6 +416,7 @@ function DataTable({
               <span>Show</span>
               <select
                 className="data-table-page-size-select"
+                aria-label="Rows per page"
                 value={pageSize}
                 onChange={(e) => {
                   setPageSize(Number(e.target.value));

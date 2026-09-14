@@ -13,6 +13,8 @@
 .topbar-left {
   display: flex;
   align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .topbar-title {
@@ -27,6 +29,228 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Everything below was previously unstyled entirely -- Topbar.jsx renders
+   topbar-brand/topbar-center/pipeline-indicator-group/engine-mode-pill etc., but no
+   CSS file defined any of them, so raw unstyled text was spilling and overlapping
+   the sidebar at every viewport width, most visibly caught at 375px in a real
+   Playwright screenshot. */
+
+.topbar-menu-btn {
+  display: none; /* shown only below 880px, see media query */
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.topbar-logo-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--accent-text);
+  color: #fff;
+}
+
+.topbar-brand-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.brand-name {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.state-tag {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.topbar-sub {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
+}
+
+.topbar-center {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.pipeline-indicator-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.pulse-beacon {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-success);
+  flex-shrink: 0;
+  animation: topbar-pulse 2s ease-in-out infinite;
+}
+
+@keyframes topbar-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.pipeline-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.pipeline-chips {
+  display: flex;
+  gap: 3px;
+}
+
+.p-chip {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: var(--accent-text);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.engine-mode-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  border: 1px solid var(--border-color);
+}
+
+.engine-mode-pill.live {
+  color: var(--status-success);
+  background: var(--status-success-bg);
+  border-color: rgba(22, 163, 74, 0.22);
+}
+
+.engine-mode-pill.mock {
+  color: var(--status-warning);
+  background: var(--status-warning-bg);
+  border-color: rgba(217, 119, 6, 0.24);
+}
+
+.mode-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.topbar-alert-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.topbar-alert-link:hover {
+  color: var(--accent-text);
+  background: var(--bg-secondary);
+}
+
+.alert-count-bubble {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--status-danger);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 880px) {
+  .topbar-menu-btn {
+    display: flex;
+  }
+
+  .topbar-center {
+    display: none;
+  }
+
+  .topbar-sub {
+    display: none;
+  }
+
+  .state-tag {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .officer-info {
+    display: none;
+  }
 }
 
 .topbar-icon-btn {
@@ -45,7 +269,7 @@
 
 .topbar-icon-btn:hover {
   background-color: var(--bg-secondary);
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent);
 }
 
@@ -71,7 +295,10 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background-color: var(--accent);
+  /* --accent (white text on it here) is 4.10:1, failing AA for text this small (12px
+     bold, under the "large text" exemption threshold) -- found by a real axe-core scan.
+     --accent-text is 4.82:1, passing. */
+  background-color: var(--accent-text);
   color: #fff;
   display: flex;
   align-items: center;
@@ -118,6 +345,6 @@
 }
 
 .officer-logout:hover {
-  color: var(--accent);
+  color: var(--accent-text);
   background-color: var(--bg-secondary);
 }

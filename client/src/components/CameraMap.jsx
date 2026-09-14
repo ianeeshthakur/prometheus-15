@@ -1081,6 +1081,18 @@ const CameraMap = React.memo(function CameraMap() {
                 click: () => {
                   setSelectedCamera(cam);
                 },
+                // Leaflet's `alt` marker option only reaches the DOM for L.Icon
+                // (image) markers -- L.DivIcon.createIcon never applies it, so the
+                // Marker `alt` prop above silently did nothing for this app's custom
+                // pin icons. The marker's outer container still gets role="button"
+                // tabindex="0" from Leaflet's keyboard handling, so it's a real
+                // ARIA command with no accessible name -- axe-core's aria-command-name
+                // rule (correctly) flags that. Setting aria-label directly on the
+                // real DOM element once Leaflet adds it is the fix.
+                add: (e) => {
+                  const el = e.target.getElement();
+                  if (el) el.setAttribute('aria-label', `Camera ${cam.id}: ${cam.name || 'unnamed'} (${cam.status || 'unknown status'})`);
+                },
               }}
             >
               <Popup>

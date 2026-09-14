@@ -46,7 +46,7 @@
 
 .sidebar-link.active {
   background-color: var(--bg-secondary);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
   border-left-color: var(--accent);
 }
@@ -63,4 +63,32 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Real phone-width layout, added after an actual 375px Playwright screenshot showed
+   this sidebar permanently occupying most of the screen with no way to collapse it.
+   Below 880px it becomes a fixed off-canvas overlay, off-screen by default and
+   slid in via Topbar's hamburger button (App.jsx owns the open/close state). */
+@media (max-width: 880px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 400;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 4px 0 24px rgba(15, 23, 42, 0.18);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 399;
+    background: rgba(15, 23, 42, 0.4);
+  }
 }

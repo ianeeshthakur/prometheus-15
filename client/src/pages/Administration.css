@@ -4,7 +4,7 @@
 
 .admin-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border-color); padding-bottom: 2px; }
 .admin-tabs button { background: transparent; border: none; border-bottom: 2px solid transparent; padding: 10px 4px; margin-right: 16px; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; }
-.admin-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.admin-tabs button.active { color: var(--accent-text); border-bottom-color: var(--accent); font-weight: 600; }
 
 .admin-tab-content { border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; background: var(--bg-primary); }
 .admin-tab-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 0.8rem; color: var(--text-secondary); }

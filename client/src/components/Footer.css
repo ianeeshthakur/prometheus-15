@@ -1,0 +1,64 @@
+.app-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 28px;
+  padding: 0 16px;
+  background-color: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.app-footer-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-footer-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.app-footer-dot.live {
+  background: #16a34a;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.18);
+}
+
+.app-footer-dot.mock {
+  background: #d97706;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.18);
+}
+
+.app-footer-dot.checking {
+  background: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.app-footer-meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-footer-dot.live {
+  /* global.css's prefers-reduced-motion rule caps this to effectively-instant when set */
+  animation: footer-dot-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes footer-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (max-width: 620px) {
+  .app-footer-meta {
+    display: none;
+  }
+}

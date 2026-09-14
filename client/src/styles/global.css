@@ -19,3 +19,16 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* Real prefers-reduced-motion handling -- applies to every animation/transition in the
+   app (pulse beacons, spinners, hover transitions) rather than requiring each component
+   to opt in individually, which is how this kind of rule silently rots as new CSS gets
+   added. Scroll behavior is included since "smooth" scrolling is itself motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

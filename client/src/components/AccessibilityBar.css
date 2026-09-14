@@ -15,7 +15,16 @@ html[data-contrast='high'] {
   --text-primary: #000000;
   --text-secondary: #1a1a1a;
   --accent: #0050a0;
+  --accent-text: #0050a0;
   --border-color: #000000;
+  /* Status tokens darkened further under high-contrast -- the normal-mode tints (light
+     backgrounds + a medium-weight color) are AA for normal use, but high-contrast mode's
+     whole point is going beyond that, so these push toward AAA against solid white. */
+  --status-success: #0f5c2c;
+  --status-warning: #8a4004;
+  --status-danger: #8f1414;
+  --status-info: #024a70;
+  --status-neutral: #1a1a1a;
 }
 
 .a11y-bar {

@@ -4,7 +4,7 @@ import api from '../api/client';
 import { useLanguage } from '../i18n/LanguageContext';
 import './Topbar.css';
 
-function Topbar() {
+function Topbar({ onToggleSidebar = () => {} }) {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [backendMode, setBackendMode] = useState('Checking...');
@@ -26,6 +26,17 @@ function Topbar() {
   return (
     <header className="topbar">
       <div className="topbar-left">
+        {/* Only visible below 880px (Topbar.css) -- opens Sidebar.jsx's off-canvas
+            overlay, added after a real 375px screenshot showed there was previously
+            no way to reach navigation at all once the sidebar had no room to sit
+            in-flow. */}
+        <button type="button" className="topbar-menu-btn" onClick={onToggleSidebar} aria-label="Toggle navigation menu">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
         <div className="topbar-brand">
           <div className="topbar-logo-icon">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

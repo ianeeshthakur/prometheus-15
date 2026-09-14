@@ -479,6 +479,7 @@ function CameraRegistry() {
           onClick={() => setSelectedCamera(null)}
           role="dialog"
           aria-modal="true"
+          aria-labelledby="camera-detail-modal-title"
         >
           <div
             className="modal-container"
@@ -488,7 +489,7 @@ function CameraRegistry() {
             <div className="modal-header">
               <div className="modal-header-info">
                 <div className="modal-title-row">
-                  <h2 className="modal-title">{selectedCamera.name}</h2>
+                  <h2 className="modal-title" id="camera-detail-modal-title">{selectedCamera.name}</h2>
                   <span className="cam-id-cell">{selectedCamera.camera_uid}</span>
                   <StatusBadge status={selectedCamera.status} size="sm" />
                 </div>
@@ -691,6 +692,7 @@ function CameraRegistry() {
           onClick={() => setIsAddModalOpen(false)}
           role="dialog"
           aria-modal="true"
+          aria-labelledby="add-camera-modal-title"
         >
           <div
             className="modal-container"
@@ -699,7 +701,7 @@ function CameraRegistry() {
           >
             <div className="modal-header">
               <div className="modal-header-info">
-                <h2 className="modal-title">Register New CCTV Asset</h2>
+                <h2 className="modal-title" id="add-camera-modal-title">Register New CCTV Asset</h2>
                 <p className="modal-subtitle">
                   Enroll an active surveillance feed into Gujarat Police GIS Foundation
                 </p>
@@ -721,8 +723,9 @@ function CameraRegistry() {
               <div className="modal-body" style={{ maxHeight: 'calc(85vh - 150px)' }}>
                 <div className="add-cam-form">
                   <div className="form-group full-width">
-                    <label className="form-label">Camera Asset Name *</label>
+                    <label className="form-label" htmlFor="cam-name">Camera Asset Name *</label>
                     <input
+                      id="cam-name"
                       type="text"
                       className="form-input"
                       placeholder="e.g. Vastrapur Lake Public Promenade North"
@@ -735,8 +738,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Camera UID</label>
+                    <label className="form-label" htmlFor="cam-uid">Camera UID</label>
                     <input
+                      id="cam-uid"
                       type="text"
                       className="form-input"
                       placeholder="Auto-generated if left blank"
@@ -746,8 +750,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Department *</label>
+                    <label className="form-label" htmlFor="cam-department">Department *</label>
                     <select
+                      id="cam-department"
                       className="form-select"
                       value={newCameraForm.department}
                       onChange={(e) => setNewCameraForm({ ...newCameraForm, department: e.target.value })}
@@ -759,8 +764,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">District *</label>
+                    <label className="form-label" htmlFor="cam-district">District *</label>
                     <select
+                      id="cam-district"
                       className="form-select"
                       value={newCameraForm.district}
                       onChange={(e) => setNewCameraForm({ ...newCameraForm, district: e.target.value })}
@@ -772,8 +778,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group full-width">
-                    <label className="form-label">Specific Location / Landmark *</label>
+                    <label className="form-label" htmlFor="cam-location">Specific Location / Landmark *</label>
                     <input
+                      id="cam-location"
                       type="text"
                       className="form-input"
                       placeholder="e.g. Near Amphitheater Gate 3, Vastrapur"
@@ -784,8 +791,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Hardware Vendor *</label>
+                    <label className="form-label" htmlFor="cam-vendor">Hardware Vendor *</label>
                     <input
+                      id="cam-vendor"
                       type="text"
                       className="form-input"
                       placeholder="e.g. Axis Communications"
@@ -796,8 +804,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Protocol *</label>
+                    <label className="form-label" htmlFor="cam-protocol">Protocol *</label>
                     <select
+                      id="cam-protocol"
                       className="form-select"
                       value={newCameraForm.protocol_type}
                       onChange={(e) => setNewCameraForm({ ...newCameraForm, protocol_type: e.target.value })}
@@ -809,8 +818,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Status *</label>
+                    <label className="form-label" htmlFor="cam-status">Status *</label>
                     <select
+                      id="cam-status"
                       className="form-select"
                       value={newCameraForm.status}
                       onChange={(e) => setNewCameraForm({ ...newCameraForm, status: e.target.value })}
@@ -822,8 +832,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">AI Profile</label>
+                    <label className="form-label" htmlFor="cam-ai-profile">AI Profile</label>
                     <select
+                      id="cam-ai-profile"
                       className="form-select"
                       value={newCameraForm.ai_profile}
                       onChange={(e) => setNewCameraForm({ ...newCameraForm, ai_profile: e.target.value })}
@@ -845,8 +856,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">GPS Latitude</label>
+                    <label className="form-label" htmlFor="cam-latitude">GPS Latitude</label>
                     <input
+                      id="cam-latitude"
                       type="number"
                       step="0.0001"
                       className="form-input"
@@ -856,8 +868,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">GPS Longitude</label>
+                    <label className="form-label" htmlFor="cam-longitude">GPS Longitude</label>
                     <input
+                      id="cam-longitude"
                       type="number"
                       step="0.0001"
                       className="form-input"
@@ -867,8 +880,9 @@ function CameraRegistry() {
                   </div>
 
                   <div className="form-group full-width">
-                    <label className="form-label">RTSP URL (optional)</label>
+                    <label className="form-label" htmlFor="cam-rtsp-url">RTSP URL (optional)</label>
                     <input
+                      id="cam-rtsp-url"
                       type="text"
                       className="form-input"
                       placeholder="rtsp://user:pass@host:port/stream/id -- required to start a live feed"

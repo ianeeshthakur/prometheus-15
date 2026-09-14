@@ -66,14 +66,14 @@ function UsersTab() {
 
       {showForm && (
         <form className="admin-inline-form" onSubmit={handleSubmit}>
-          <input placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-          <input placeholder="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-          <input placeholder="Full name (optional)" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
-          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+          <input aria-label="Username" placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+          <input aria-label="Password" placeholder="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <input aria-label="Full name (optional)" placeholder="Full name (optional)" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
+          <select aria-label="Role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             <option value="OPERATOR">OPERATOR</option>
             <option value="ADMIN">ADMIN</option>
           </select>
-          <input placeholder="Department scope (operators only)" value={form.department_scope} onChange={(e) => setForm({ ...form, department_scope: e.target.value })} />
+          <input aria-label="Department scope (operators only)" placeholder="Department scope (operators only)" value={form.department_scope} onChange={(e) => setForm({ ...form, department_scope: e.target.value })} />
           <button type="submit" disabled={submitting}>{submitting ? 'Creating…' : 'Create'}</button>
           {formError && <p className="admin-form-error">{formError}</p>}
         </form>

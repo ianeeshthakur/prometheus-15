@@ -144,7 +144,7 @@
 
 .hero-badge {
   background-color: rgba(2, 132, 199, 0.12);
-  color: var(--accent);
+  color: var(--accent-text);
   border: 1px solid rgba(2, 132, 199, 0.25);
   font-size: 0.75rem;
   font-weight: 700;
@@ -185,7 +185,10 @@
   gap: 7px;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #16a34a;
+  /* #16a34a was 3.30:1 on white, failing AA at this font size -- found by axe-core.
+     --status-success (theme.css, contrast-audited) is 5.02:1. The dot itself keeps
+     the brighter #16a34a (decorative, not text, contrast rules don't apply). */
+  color: var(--status-success);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -475,7 +478,9 @@
 .widget-action-pill {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--accent);
+  /* --accent-text was 4.36:1 on this specific tinted bg, just under AA -- axe-core
+     found it. --status-info is 5.36:1 on the same background. */
+  color: var(--status-info);
   background-color: rgba(2, 132, 199, 0.08);
   border: 1px solid rgba(2, 132, 199, 0.2);
   padding: 4px 10px;

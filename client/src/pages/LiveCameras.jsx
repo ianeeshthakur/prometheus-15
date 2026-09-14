@@ -129,15 +129,15 @@ function LiveCameras() {
       <div className="live-cameras-layout">
         <div className="live-cameras-main">
           <div className="live-cameras-filters">
-            <select value={districtFilter} onChange={(e) => setDistrictFilter(e.target.value)}>
+            <select aria-label="Filter by district" value={districtFilter} onChange={(e) => setDistrictFilter(e.target.value)}>
               <option value="ALL">All Districts</option>
               {districts.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="ALL">All Statuses</option>
               {['ACTIVE', 'INACTIVE', 'DEGRADED', 'OFFLINE'].map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-            <select value={protocolFilter} onChange={(e) => setProtocolFilter(e.target.value)}>
+            <select aria-label="Filter by protocol" value={protocolFilter} onChange={(e) => setProtocolFilter(e.target.value)}>
               <option value="ALL">All Protocols</option>
               {protocols.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
@@ -149,7 +149,7 @@ function LiveCameras() {
           </div>
         </div>
 
-        <aside className="live-events-panel">
+        <aside className="live-events-panel" aria-label="Live AI event feed">
           <div className="live-events-header">
             <h2>Live AI Event Feed</h2>
             <span className="live-events-count">{events.length}</span>
