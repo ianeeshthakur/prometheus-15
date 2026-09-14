@@ -6,21 +6,10 @@ import logging
 
 from adapters.models import NormalizedFrame
 from .schemas import AIProfile, FrameQuality, PlateStatus, PlateResult, AIAnalysisResult
-from .config import AI_PROFILES_CONFIG, OCR_CONFIDENCE_THRESHOLD, PLATE_CONFIDENCE_THRESHOLD, PROVIDER_MODE, DEVICE, PLATE_MODEL_PATH
+from .config import AI_PROFILES_CONFIG, OCR_CONFIDENCE_THRESHOLD, PLATE_CONFIDENCE_THRESHOLD, PROVIDER_MODE
 from .quality import FrameQualityAnalyzer
-from .mock_providers import (
-    MockVehicleDetector,
-    MockPersonDetector,
-    MockAnomalyDetector,
-    MockPlateDetector,
-    MockOCRProvider,
-)
-from .real_providers import (
-    RealPlateDetector,
-    StubRealVehicleDetector,
-    StubPaddleOCR,
-    IoUTracker
-)
+from .mock_providers import MockVehicleDetector, MockPersonDetector, MockAnomalyDetector, MockPlateDetector, MockOCRProvider
+from .real_providers import RealAnomalyDetector, RealOCRProvider, RealPlateDetector
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +19,13 @@ class AIOrchestrator:
         self.profile = profile
         self.config = AI_PROFILES_CONFIG[profile]
 
-        # Mock providers today; see ai/README.md for the real-model swap-in procedure
-        # (docs/ai_pipelines.md §1 mock-provider interface boundary).
         if PROVIDER_MODE == "REAL":
-            self.vehicle_detector = StubRealVehicleDetector()
+            self.vehicle_detector = MockVehicleDetector()
             self.person_detector = MockPersonDetector()
-            self.anomaly_detector = MockAnomalyDetector()
-            self.plate_detector = RealPlateDetector(PLATE_MODEL_PATH, DEVICE)
-            self.ocr_provider = StubPaddleOCR()
-            self.tracker = IoUTracker()
+            self.anomaly_detector = RealAnomalyDetector()
+            self.plate_detector = RealPlateDetector()
+            self.ocr_provider = RealOCRProvider()
+            self.tracker = None
         else:
             self.vehicle_detector = MockVehicleDetector()
             self.person_detector = MockPersonDetector()
@@ -200,5 +187,12 @@ class AIOrchestrator:
             anomalies=anomalies,
             processing_time_ms=processing_time,
             model_provider=PROVIDER_MODE,
+            model_versions={
+                "vehicle_detection": "MOCK",
+                "person_detection": "MOCK",
+                "plate_detection": "REAL:opencv_haarcascade_russian_plate_number",
+                "ocr": "REAL:tesseract",
+                "anomaly_detection": "REAL:classical_cv_mog2_bgsub",
+            },
             overall_status="SUCCESS",
         )

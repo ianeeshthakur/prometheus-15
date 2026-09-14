@@ -103,6 +103,15 @@ class FFmpegRunner:
         cmd = [
             "ffmpeg",
             "-rtsp_transport", "tcp",
+            # Without a read timeout, a stalled RTSP source (real, observed under
+            # concurrent load against the Sentinel grid) leaves ffmpeg blocked
+            # indefinitely on input with no output and no exit -- so it never crashes,
+            # never fires the on_stop callback, and stream_manager keeps reporting the
+            # last-known "LIVE" status forever even though zero frames are arriving.
+            # -timeout (microseconds, RTSP demuxer's socket read timeout) forces ffmpeg
+            # to exit on a stalled read so the existing reconnect/backoff path
+            # (stream_manager._handle_unexpected_exit) actually gets a chance to run.
+            "-timeout", "10000000",
             "-i", self.rtsp_url,
             "-c:v", "libx264",
             "-preset", "ultrafast",

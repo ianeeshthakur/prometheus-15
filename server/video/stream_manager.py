@@ -29,8 +29,17 @@ class StreamManager:
         self.runners: Dict[str, FFmpegRunner] = {}
         self.statuses: Dict[str, str] = {}
         self.restart_counts: Dict[str, int] = {}
-        self.MAX_RESTARTS = 3
-        self.RESTART_DELAY_SECONDS = 5
+        # Sentinel grid's integrator guide is explicit: "Feeds are supervised and may
+        # restart. Exponential backoff (~2s -> cap ~30s). Never tight-loop" and "Don't
+        # treat join-time decode warnings as fatal." The previous flat 5s delay + a
+        # 3-attempt cap gave up (permanent OFFLINE) after only 15s -- too aggressive
+        # for a source that restarts itself by design, and it's what was actually
+        # producing the "some cameras not working" symptom under concurrent load.
+        # adapters/rtsp.py already implements this same exponential curve; mirrored
+        # here rather than duplicated as a shared helper to keep this fix minimal.
+        self.MAX_RESTARTS = 15
+        self.BASE_BACKOFF_SECONDS = 2
+        self.MAX_BACKOFF_SECONDS = 30
         self.hls_dir = HLS_OUTPUT_DIR
 
     async def start_stream(self, camera_id: str, rtsp_url: str) -> bool:
@@ -88,13 +97,28 @@ class StreamManager:
         if current_restarts >= self.MAX_RESTARTS:
             logger.error(f"[{camera_id}] Max restart limit ({self.MAX_RESTARTS}) reached. Stream marked OFFLINE.")
             self.statuses[camera_id] = "OFFLINE"
+            # Reflect the real outcome in the registry too -- previously the DB row
+            # stayed ACTIVE forever even after the stream gave up, so the Live Cameras
+            # list kept showing a camera as normal that was actually dead. Not a
+            # delete: a give-up here is frequently transient (source-side restart,
+            # rate-limiting) rather than proof the camera is permanently bad, and a
+            # manual /start later resets restart_counts for a fresh attempt.
+            from db.database import SessionLocal
+            import services.camera_service as camera_service
+
+            db = SessionLocal()
+            try:
+                camera_service.set_camera_status(db, camera_id, "OFFLINE")
+            finally:
+                db.close()
             return
 
         self.restart_counts[camera_id] = current_restarts + 1
         self.statuses[camera_id] = "RECONNECTING"
 
-        logger.info(f"[{camera_id}] Attempting restart {self.restart_counts[camera_id]}/{self.MAX_RESTARTS} in {self.RESTART_DELAY_SECONDS}s...")
-        await asyncio.sleep(self.RESTART_DELAY_SECONDS)
+        backoff = min(self.BASE_BACKOFF_SECONDS * (2 ** current_restarts), self.MAX_BACKOFF_SECONDS)
+        logger.info(f"[{camera_id}] Attempting restart {self.restart_counts[camera_id]}/{self.MAX_RESTARTS} in {backoff}s...")
+        await asyncio.sleep(backoff)
         await self.start_stream(camera_id, rtsp_url)
 
     def get_stream_status(self, camera_id: str) -> Optional[StreamStatus]:

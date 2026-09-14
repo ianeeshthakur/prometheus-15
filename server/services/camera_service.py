@@ -34,6 +34,28 @@ def update_camera(db: Session, db_obj: Camera, obj_in: CameraCreate) -> Camera:
     return db_obj
 
 
+def delete_camera(db: Session, db_obj: Camera) -> None:
+    db.delete(db_obj)
+    db.commit()
+
+
+def set_camera_status(db: Session, camera_uid: str, status: str) -> Optional[Camera]:
+    """Used by video/stream_manager.py when a stream exhausts its reconnect budget --
+    reflects the real outcome in the registry (previously the DB row stayed ACTIVE
+    forever regardless of whether the stream was actually reachable) without deleting
+    the row, since a stream giving up is often transient (source-side restart,
+    rate-limiting) rather than proof the camera itself is bad. A later manual
+    /start resets the in-memory restart counter and gives it a fresh attempt."""
+    db_obj = get_camera_by_uid(db, camera_uid)
+    if not db_obj:
+        return None
+    db_obj.status = status
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
+
+
 def list_cameras(
     db: Session,
     department: Optional[str] = None,

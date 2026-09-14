@@ -15,7 +15,10 @@ sse-starlette>=2.1.0
 psutil>=5.9.8
 sqlalchemy>=2.0.0
 python-multipart>=0.0.9
-opencv-python-headless
+# Pinned (not >=) -- opencv-python-headless 5.0.0 (released during this project) drops
+# cv2.CascadeClassifier from its Python bindings, which ai/real_providers.py's real
+# plate detector needs. 4.10.0.84 is the last well-established 4.x release and has it.
+opencv-python-headless==4.10.0.84
 numpy
 requests>=2.31.0
 ultralytics
@@ -29,3 +32,8 @@ bcrypt>=4.1.0
 pyjwt>=2.9.0
 pytest>=8.0.0
 httpx>=0.27.0
+
+# Added for the real (non-mock) plate-OCR pipeline -- ai/real_providers.py. Wraps the
+# Tesseract OCR engine binary, which must be installed separately (not pip-installable
+# -- see ai/real_providers.py's module docstring for how PYTESSERACT_CMD is resolved).
+pytesseract>=0.3.10

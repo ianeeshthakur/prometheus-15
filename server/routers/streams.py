@@ -59,6 +59,15 @@ async def start_stream(
     if not success:
         raise HTTPException(status_code=500, detail="Failed to start stream")
 
+    if camera.status == "OFFLINE":
+        # Reverses video/stream_manager.py's give-up marking -- a fresh manual start
+        # succeeded, so the registry shouldn't keep reporting it as dead.
+        db2 = SessionLocal()
+        try:
+            camera_service.set_camera_status(db2, camera_id, "ACTIVE")
+        finally:
+            db2.close()
+
     if camera.ai_enabled:
         background_tasks.add_task(_run_ai_pipeline, camera_id)
 
