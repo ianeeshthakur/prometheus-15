@@ -31,13 +31,19 @@ class FrameAnalyzeRequest(BaseModel):
 
 @router.get("/health")
 async def ai_health() -> Dict[str, Any]:
+    # Dynamically check real providers from the orchestrator
+    traffic_orch = orchestrators[AIProfile.TRAFFIC]
+    is_real = getattr(traffic_orch.plate_detector, "configured", False)
+    plate_status = "REAL" if is_real else "MOCK_READY"
+    
+    # In this current setup, only plate is truly REAL if configured.
     return {
         "status": "READY",
         "providers": {
             "vehicle": "MOCK_READY",
             "person": "MOCK_READY",
             "anomaly": "MOCK_READY",
-            "plate": "MOCK_READY",
+            "plate": plate_status,
             "ocr": "MOCK_READY",
         },
     }

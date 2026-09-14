@@ -87,37 +87,22 @@ class AIOrchestrator:
 
             if self.config.get("plate_detection"):
                 height, width = frame.shape[:2]
-                for v in vehicles:
-                    # Clip bbox safely
-                    vx1 = max(0, min(width - 1, int(v.bbox[0])))
-                    vy1 = max(0, min(height - 1, int(v.bbox[1])))
-                    vx2 = max(0, min(width, int(v.bbox[2])))
-                    vy2 = max(0, min(height, int(v.bbox[3])))
-                    
-                    if vx2 <= vx1 or vy2 <= vy1:
-                        continue
-                        
-                    vehicle_crop = frame[vy1:vy2, vx1:vx2]
-
-                    plate_res = self.plate_detector.detect(vehicle_crop, v.detection_id, norm_frame.camera_uid, norm_frame.timestamp, norm_frame.frame_sequence)
+                
+                if not vehicles:
+                    # FALLBACK: No vehicles detected, run plate detector on the full frame
+                    plate_res = self.plate_detector.detect(frame, "FULL_FRAME", norm_frame.camera_uid, norm_frame.timestamp, norm_frame.frame_sequence)
                     if plate_res and plate_res["plate_detection_confidence"] >= PLATE_CONFIDENCE_THRESHOLD:
                         raw_txt, norm_txt, ocr_conf = "", "", 0.0
+                        global_bbox = plate_res["bbox"]
                         
-                        # Convert crop coords back to frame coords
-                        px1 = vx1 + int(plate_res["bbox"][0])
-                        py1 = vy1 + int(plate_res["bbox"][1])
-                        px2 = vx1 + int(plate_res["bbox"][2])
-                        py2 = vy1 + int(plate_res["bbox"][3])
-                        global_bbox = [px1, py1, px2, py2]
-
                         if self.config.get("ocr"):
-                            p_cx1 = max(0, int(plate_res["bbox"][0]))
-                            p_cy1 = max(0, int(plate_res["bbox"][1]))
-                            p_cx2 = min(vx2 - vx1, int(plate_res["bbox"][2]))
-                            p_cy2 = min(vy2 - vy1, int(plate_res["bbox"][3]))
+                            p_cx1 = max(0, int(global_bbox[0]))
+                            p_cy1 = max(0, int(global_bbox[1]))
+                            p_cx2 = min(width, int(global_bbox[2]))
+                            p_cy2 = min(height, int(global_bbox[3]))
                             
                             if p_cx2 > p_cx1 and p_cy2 > p_cy1:
-                                plate_crop = vehicle_crop[p_cy1:p_cy2, p_cx1:p_cx2]
+                                plate_crop = frame[p_cy1:p_cy2, p_cx1:p_cx2]
                                 ocr_res = self.ocr_provider.recognize(plate_crop)
                                 if ocr_res:
                                     raw_txt = ocr_res["raw_text"]
@@ -131,7 +116,7 @@ class AIOrchestrator:
                         plates.append(
                             PlateResult(
                                 plate_id=f"PLT-{uuid.uuid4().hex[:8]}",
-                                vehicle_detection_id=v.detection_id,
+                                vehicle_detection_id="FULL_FRAME",
                                 bbox=global_bbox,
                                 raw_text=raw_txt,
                                 normalized_text=norm_txt,
@@ -143,6 +128,63 @@ class AIOrchestrator:
                                 status=status,
                             )
                         )
+                else:
+                    for v in vehicles:
+                        # Clip bbox safely
+                        vx1 = max(0, min(width - 1, int(v.bbox[0])))
+                        vy1 = max(0, min(height - 1, int(v.bbox[1])))
+                        vx2 = max(0, min(width, int(v.bbox[2])))
+                        vy2 = max(0, min(height, int(v.bbox[3])))
+                        
+                        if vx2 <= vx1 or vy2 <= vy1:
+                            continue
+                            
+                        vehicle_crop = frame[vy1:vy2, vx1:vx2]
+
+                        plate_res = self.plate_detector.detect(vehicle_crop, v.detection_id, norm_frame.camera_uid, norm_frame.timestamp, norm_frame.frame_sequence)
+                        if plate_res and plate_res["plate_detection_confidence"] >= PLATE_CONFIDENCE_THRESHOLD:
+                            raw_txt, norm_txt, ocr_conf = "", "", 0.0
+                            
+                            # Convert crop coords back to frame coords
+                            px1 = vx1 + int(plate_res["bbox"][0])
+                            py1 = vy1 + int(plate_res["bbox"][1])
+                            px2 = vx1 + int(plate_res["bbox"][2])
+                            py2 = vy1 + int(plate_res["bbox"][3])
+                            global_bbox = [px1, py1, px2, py2]
+
+                            if self.config.get("ocr"):
+                                p_cx1 = max(0, int(plate_res["bbox"][0]))
+                                p_cy1 = max(0, int(plate_res["bbox"][1]))
+                                p_cx2 = min(vx2 - vx1, int(plate_res["bbox"][2]))
+                                p_cy2 = min(vy2 - vy1, int(plate_res["bbox"][3]))
+                                
+                                if p_cx2 > p_cx1 and p_cy2 > p_cy1:
+                                    plate_crop = vehicle_crop[p_cy1:p_cy2, p_cx1:p_cx2]
+                                    ocr_res = self.ocr_provider.recognize(plate_crop)
+                                    if ocr_res:
+                                        raw_txt = ocr_res["raw_text"]
+                                        norm_txt = ocr_res["normalized_text"]
+                                        ocr_conf = ocr_res["ocr_confidence"]
+
+                            final_conf, level, status = self._calculate_plate_confidence(
+                                plate_res["plate_detection_confidence"], ocr_conf, quality
+                            )
+
+                            plates.append(
+                                PlateResult(
+                                    plate_id=f"PLT-{uuid.uuid4().hex[:8]}",
+                                    vehicle_detection_id=v.detection_id,
+                                    bbox=global_bbox,
+                                    raw_text=raw_txt,
+                                    normalized_text=norm_txt,
+                                    plate_detection_confidence=plate_res["plate_detection_confidence"],
+                                    ocr_confidence=ocr_conf,
+                                    quality_score=1.0 if quality == FrameQuality.GOOD else 0.5,
+                                    final_confidence=final_conf,
+                                    confidence_level=level,
+                                    status=status,
+                                )
+                            )
 
         processing_time = int((time.time() - start_time) * 1000)
 
