@@ -316,11 +316,17 @@ class VistaApiClient {
 
   /** GET /api/streams/events/stream -- real Server-Sent Events feed of live AI
    * detections/alerts (backend/routers/streams.py, backend/intelligence/events.py).
-   * Deliberately unauthenticated on the backend (browser EventSource can't send
-   * custom headers), matching the endpoint's own design. Returns the EventSource so
-   * the caller controls its lifecycle (close() on unmount). */
+   * This was genuinely unauthenticated on the backend until a real re-check of
+   * docs/backend.md §12's "auth on every route" claim found it (and
+   * getStreamStatus() below) contradicted that claim -- it's now real auth via
+   * get_current_user_header_or_query. Browser EventSource can't set custom headers,
+   * so the token goes as a ?token= query param (server/core/security.py's
+   * get_current_user_header_or_query docstring explains why that's the one
+   * legitimate exception to header-only auth in this codebase). Returns the
+   * EventSource so the caller controls its lifecycle (close() on unmount). */
   subscribeToLiveEvents(onEvent, onError) {
-    const source = new EventSource(`${this.baseUrl}/api/streams/events/stream`);
+    const tokenParam = this.token ? `?token=${encodeURIComponent(this.token)}` : '';
+    const source = new EventSource(`${this.baseUrl}/api/streams/events/stream${tokenParam}`);
     source.onmessage = (evt) => {
       try {
         onEvent(JSON.parse(evt.data));
@@ -361,10 +367,11 @@ class VistaApiClient {
     throw new Error(`Failed to stop stream (${res.status})`);
   }
 
-  /** GET /api/streams/{camera_id}/status -- unauthenticated on the backend
-   * (routers/streams.py has no auth dependency on this one specifically). */
+  /** GET /api/streams/{camera_id}/status -- now real auth (get_current_user), like
+   * every other camera/stream route; was genuinely unauthenticated until the same
+   * re-check that fixed the events/stream endpoint above found it too. */
   async getStreamStatus(cameraUid) {
-    const res = await fetch(`${this.baseUrl}/api/streams/${cameraUid}/status`);
+    const res = await fetch(`${this.baseUrl}/api/streams/${cameraUid}/status`, { headers: this._authHeaders() });
     if (res.ok) return await res.json();
     return { camera_id: cameraUid, status: 'UNKNOWN' };
   }

@@ -27,7 +27,7 @@ from ai.orchestrator import AIOrchestrator
 from ai.schemas import AIProfile
 from intelligence.events import NormalizedEvent
 from intelligence.alert_engine import alert_engine
-from core.security import get_current_user, log_action
+from core.security import get_current_user, get_current_user_header_or_query, log_action
 from models.user import User
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,10 @@ async def stop_stream(camera_id: str, user: User = Depends(get_current_user)):
 
 
 @router.get("/{camera_id}/status")
-async def get_status(camera_id: str):
+async def get_status(camera_id: str, user: User = Depends(get_current_user)):
+    """Auth-required as of docs/backend.md §12's "every route" audit -- this was found
+    genuinely open (no dependency at all) during a real re-check of that claim, which
+    explicitly says only /, /api/health/, and /api/ai/* stay unauthenticated."""
     status = stream_manager.get_stream_status(camera_id)
     if not status:
         return {"camera_id": camera_id, "status": "OFFLINE"}
@@ -168,8 +171,15 @@ async def _run_ai_pipeline(camera_id: str):
 
 
 @router.get("/events/stream")
-async def events_stream(request: Request):
-    """Server-Sent Events endpoint for live AI events."""
+async def events_stream(request: Request, user: User = Depends(get_current_user_header_or_query)):
+    """Server-Sent Events endpoint for live AI events.
+
+    Auth-required as of docs/backend.md §12's "every route" audit -- found genuinely
+    open (no dependency at all) during a real re-check of that claim. This broadcasts
+    real detection events (plates/entities/camera locations) to whoever connects;
+    leaving it unauthenticated would let anyone watch that live feed with no login.
+    Uses get_current_user_header_or_query (not get_current_user) because the
+    browser-native EventSource client this feeds can't set an Authorization header."""
     queue = asyncio.Queue()
     alert_engine.subscribe(queue)
 

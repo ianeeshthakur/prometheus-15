@@ -76,14 +76,11 @@ def revoke_token(db: Session, jti: str, expires_at: datetime) -> None:
     db.commit()
 
 
-def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
-    db: Session = Depends(get_db),
-) -> User:
-    if credentials is None:
+def _resolve_user_from_raw_token(raw_token: Optional[str], db: Session) -> User:
+    if raw_token is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
-    payload = _decode_token(credentials.credentials)
+    payload = _decode_token(raw_token)
     try:
         user_id = int(payload["sub"])
         jti = payload["jti"]
@@ -97,6 +94,33 @@ def get_current_user(
     if not user or not user.active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
     return user
+
+
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    raw_token = credentials.credentials if credentials else None
+    return _resolve_user_from_raw_token(raw_token, db)
+
+
+def get_current_user_header_or_query(
+    token: Optional[str] = None,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    """Same check as get_current_user, plus a `?token=` query-param fallback --
+    exists only for GET /api/streams/events/stream. Browsers' native EventSource API
+    (used by client/src/api/client.js's subscribeToLiveEvents()) cannot set custom
+    request headers at all, so an SSE endpoint that requires Authorization the normal
+    way is unreachable from a real browser -- not a workaround for weaker auth, the
+    same JWT is still required and still validated (signature, expiry, revocation)
+    exactly as through the header path. Every other authenticated route should keep
+    using get_current_user (header-only) -- a query-param token is more exposure-prone
+    (browser history, server access logs) and should be as narrowly scoped as the one
+    real reason it exists here."""
+    raw_token = credentials.credentials if credentials else token
+    return _resolve_user_from_raw_token(raw_token, db)
 
 
 def get_current_token_claims(

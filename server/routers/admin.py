@@ -16,7 +16,13 @@ router = APIRouter()
 
 
 @router.get("/facial-recognition", response_model=FacialRecognitionStatusResponse)
-async def get_facial_recognition_status(db: Session = Depends(get_db)):
+async def get_facial_recognition_status(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """Auth-required as of docs/backend.md §12.8 -- found genuinely open (no
+    dependency at all) during a real re-check of docs/frontend.md's claim that all
+    three Administration tabs are admin-only on the backend. This one wasn't: it leaked
+    whether facial recognition is currently enabled and its full authorization history
+    (who enabled/disabled it, when, why) to any unauthenticated caller -- exactly the
+    kind of DPDP-sensitive detail this gate exists to protect in the first place."""
     return FacialRecognitionStatusResponse(
         currently_enabled=admin_settings_service.is_currently_enabled(db),
         history=admin_settings_service.get_history(db),

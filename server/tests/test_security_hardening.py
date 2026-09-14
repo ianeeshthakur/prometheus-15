@@ -168,3 +168,56 @@ def test_investigation_title_html_tags_stripped(client, auth_headers):
     assert resp.status_code == 201, resp.text
     assert "<svg" not in resp.json()["title"]
     assert "Suspicious vehicle case" in resp.json()["title"]
+
+
+# docs/backend.md §12.8 -- these three routes were found genuinely unauthenticated
+# during a real re-check of the "auth enforced on every route" claim above, contrary
+# to what this file's own docstring already asserted. Regression tests so this can't
+# silently reopen (nothing here covered them before, which is exactly how they went
+# unnoticed in the first place).
+
+
+def test_stream_status_requires_auth(client):
+    resp = client.get("/api/streams/CAM-DOES-NOT-EXIST/status")
+    assert resp.status_code == 401
+
+
+def test_stream_status_with_auth_succeeds(client, auth_headers):
+    resp = client.get("/api/streams/CAM-DOES-NOT-EXIST/status", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "OFFLINE"
+
+
+def test_events_stream_requires_auth(client):
+    resp = client.get("/api/streams/events/stream")
+    assert resp.status_code == 401
+
+
+def test_events_stream_accepts_token_query_param(client, admin_token):
+    """GET /api/streams/events/stream streams forever by design (a live event feed),
+    which makes it impractical to drive through a real in-process request in a test
+    (the naive version of this test -- open the stream, assert 200 -- hung
+    indefinitely, blocked inside the endpoint's own `await queue.get()`). Testing the
+    actual dependency function directly instead: core/security.py's
+    get_current_user_header_or_query is exactly what that route depends on, and this
+    proves it accepts the same JWT via a `token` query-param argument the way
+    client/src/api/client.js's subscribeToLiveEvents() sends it (browser EventSource
+    can't set an Authorization header at all)."""
+    from core.security import get_current_user_header_or_query
+    from db.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        user = get_current_user_header_or_query(token=admin_token, credentials=None, db=db)
+        assert user.username == "admin"
+    finally:
+        db.close()
+
+
+def test_facial_recognition_status_requires_admin(client, auth_headers):
+    resp = client.get("/api/admin/facial-recognition")
+    assert resp.status_code == 401
+
+    resp = client.get("/api/admin/facial-recognition", headers=auth_headers)
+    assert resp.status_code == 200
+    assert "currently_enabled" in resp.json()
