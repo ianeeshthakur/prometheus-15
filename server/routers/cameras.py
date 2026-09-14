@@ -107,17 +107,6 @@ async def create_camera_manual(
     return camera
 
 
-@router.delete("/{camera_uid}", status_code=204)
-async def delete_camera(camera_uid: str, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    """Admin-only, same reasoning as create -- removing a registry entry (and its
-    RTSP credentials) shouldn't be triggerable by an ordinary operator."""
-    db_cam = camera_service.get_camera_by_uid(db, camera_uid)
-    if not db_cam:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    camera_service.delete_camera(db, db_cam)
-    log_action("CAMERA_DELETED", user=admin, resource_type="camera", resource_id=camera_uid, db=db)
-
-
 @router.post("/import/csv", response_model=schemas.ImportSummaryResponse)
 async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Bulk import cameras from CSV file."""
